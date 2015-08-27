@@ -16,10 +16,10 @@ var AddressesUtxos
 var AssetsTransactions
 var AssetsUtxos
 var AssetsAddresses
-
-var debug = false
+var debug
 
 function Scanner (settings) {
+  debug = settings.debug
   properties = settings.properties
   this.next_hash = settings.next_hash
   this.last_hash = settings.last_hash
