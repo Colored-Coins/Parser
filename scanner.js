@@ -8,7 +8,6 @@ var bitcoin = require('bitcoin-async')
 
 var properties
 var bitcoin_rpc
-var logger
 var debug
 
 var Blocks = require(__dirname + '/model/blocks')
@@ -27,8 +26,7 @@ function Scanner (settings, db) {
   this.last_hash = settings.last_hash
   this.last_block = settings.last_block
   this.last_fully_parsed_block = settings.last_fully_parsed_block
-  bitcoin_rpc = new bitcoin.Client(settings)
-  logger = settings.logger
+  bitcoin_rpc = new bitcoin.Client(settings.rpc_settings)
 
   db.model('blocks', Blocks)
   db.model('rawtransactions', RawTransactions)
@@ -67,7 +65,7 @@ util.inherits(Scanner, events.EventEmitter)
 Scanner.prototype.scan_blocks = function (err) {
   var self = this
   if (err) {
-    logger.error(err)
+    console.error(err)
     return self.scan_blocks()
   }
   var job
@@ -126,7 +124,7 @@ Scanner.prototype.scan_blocks = function (err) {
 
 Scanner.prototype.revert_block = function (block_height, callback) {
   var self = this
-  logger.info('Reverting block: ' + block_height)
+  console.log('Reverting block: ' + block_height)
   var conditions = {
     height: block_height
   }
@@ -146,7 +144,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
     var raw_transaction_bulk = RawTransactions.collection.initializeOrderedBulkOp()
 
     // logger.debug('reverting '+block_data.tx.length+' txs.')
-    var txid = []
+    var txids = []
     var colored_txids = []
     async.eachSeries(block_data.tx.reverse(), function (txid, cb) {
       txids.push(txid)
@@ -307,9 +305,9 @@ var revert_vout = function (txid, vouts, utxo_bulk, addresses_transactions_bulk,
 
 Scanner.prototype.scan_mempol_only = function (err) {
   var self = this
-  logger.debug('scanning mempool')
+  // logger.debug('scanning mempool')
   if (err) {
-    logger.error(err)
+    console.error(err)
     return self.scan_mempol_only()
   }
   self.parse_new_mempool(function (err) {
@@ -322,7 +320,7 @@ Scanner.prototype.scan_mempol_only = function (err) {
 Scanner.prototype.fix_blocks = function (err, callback) {
   var self = this
   if (err) {
-    logger.error(err)
+    console.error(err)
     return self.fix_blocks(null, callback)
   }
   var emits = []
@@ -383,7 +381,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
 
     self.get_need_to_fix_transactions_by_blocks(first_block, last_block, function (err, transactions_data) {
       if (err) return self.fix_blocks(err)
-      logger.info('Fixing blocks ' + first_block + '-' + last_block + ' (' + transactions_data.length + ' txs).')
+      console.log('Fixing blocks ' + first_block + '-' + last_block + ' (' + transactions_data.length + ' txs).')
         // var tx_to_fix_count = transactions_data.length
       // logger.debug('fixing '+tx_to_fix_count+' txs.')
       if (!transactions_data || !transactions_data.length) {
@@ -422,7 +420,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
 Scanner.prototype.parse_cc = function (err, callback) {
   var self = this
   if (err) {
-    logger.error(err)
+    console.error(err)
     return self.parse_cc()
   }
   var emits = []
@@ -493,7 +491,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
 
     self.get_need_to_cc_parse_transactions_by_blocks(first_block, last_block, function (err, transactions_data) {
       if (err) return self.parse_cc(err)
-      logger.info('Parsing cc for blocks ' + first_block + '-' + last_block + ' (' + transactions_data.length + ' txs).')
+      console.log('Parsing cc for blocks ' + first_block + '-' + last_block + ' (' + transactions_data.length + ' txs).')
         // var tx_to_fix_count = transactions_data.length
       // logger.debug('fixing '+tx_to_fix_count+' txs.')
       if (!transactions_data || !transactions_data.length) {
@@ -734,7 +732,7 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
   var conditions = {
     hash: raw_block_data.hash
   }
-  logger.info('parsing new block ' + raw_block_data.height)
+  console.log('parsing new block ' + raw_block_data.height)
 
   var command_arr = []
   raw_block_data.tx.forEach(function (txhash) {
@@ -768,10 +766,10 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
   function (err) {
     if (err) {
       if ('code' in err && err.code === -5) {
-        logger.error('Can\'t find tx.')
+        console.error('Can\'t find tx.')
       } else {
-        logger.error('parse_new_block_err: ' + err)
-        // logger.error(command_arr)
+        console.error('parse_new_block_err: ' + err)
+        // console.error(command_arr)
         return callback(err)
       }
     }
@@ -939,7 +937,7 @@ var add_insert_update_to_bulk = function (raw_transaction_data, vins, utxos) {
   // var temp = 0
   // for (var vinkey in vins) {
   //   vin = vins[vinkey]
-  //   // logger.error('!!!! NOT FOUND '+vin.txid+':'+vin.vout+' !!!!')
+  //   // console.error('!!!! NOT FOUND '+vin.txid+':'+vin.vout+' !!!!')
   // }
   if (Object.keys(vins).length) {
     raw_transaction_data.tries = raw_transaction_data.tries || 0
@@ -1110,10 +1108,10 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utx
         try {
           var cc = CCTransaction.fromHex(hex).toJson()
         } catch (e) {
-          logger.info('Invalid CC transaction.')
+          console.log('Invalid CC transaction.')
         }
         if (cc) {
-          logger.debug('colored!')
+          // logger.debug('colored!')
           raw_transaction_data.ccdata = raw_transaction_data.ccdata || []
           raw_transaction_data.ccdata.push(cc)
           raw_transaction_data.colored = true
@@ -1282,7 +1280,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
 
   self.emit('mempool')
   bitcoin_rpc.cmd('getrawmempool', [], function (err, whole_txids) {
-    logger.info('parsing mempool txs (' + whole_txids.length + ')')
+    console.log('parsing mempool txs (' + whole_txids.length + ')')
     if (err) return callback(err)
     if (!whole_txids || !whole_txids.length) return callback()
 
@@ -1306,11 +1304,11 @@ Scanner.prototype.parse_new_mempool = function (callback) {
 
         var n_batch = 5000
         var txids = whole_txids.slice(i, i + n_batch)
-        logger.info('parsing mempool txs (' + i + '-' + (i + txids.length) + ',' + whole_txids.length + ')')
+        console.log('parsing mempool txs (' + i + '-' + (i + txids.length) + ',' + whole_txids.length + ')')
         i += n_batch
         // var addresses_assets = {}
         var parsed_tx = []
-        // logger.info('before find db tx')
+        // console.log('before find db tx')
         var conditions = {
           txid: {$in: txids},
           iosparsed: true,
@@ -1320,7 +1318,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           txid: 1
         }
         RawTransactions.find(conditions, projection, function (err, transactions) {
-          // logger.info('after find db tx')
+          // console.log('after find db tx')
           if (err) return cb(err)
           transactions.forEach(function (transaction) {
             parsed_tx.push(transaction.txid)
@@ -1332,30 +1330,30 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           txids.forEach(function (txhash) {
             command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
           })
-          // logger.info('before find and parse rpc tx ('+txids.length+')')
+          // console.log('before find and parse rpc tx ('+txids.length+')')
           bitcoin_rpc.cmd(command_arr, function (raw_transaction_data, cb2) {
             raw_transaction_data = to_discrete(raw_transaction_data)
             self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, cb2)
           },
           function (err) {
-            // logger.info('after find and parse rpc tx')
+            // console.log('after find and parse rpc tx')
             if (err) {
               if ('code' in err && err.code === -5) {
-                logger.error('Can\'t find tx.')
+                console.error('Can\'t find tx.')
               } else {
-                logger.error('parse_new_block_err: ' + err)
-                // logger.error(command_arr)
+                console.error('parse_new_block_err: ' + err)
+                // console.error(command_arr)
                 return cb(err)
               }
             }
-            // logger.info('before parse db tx')
+            // console.log('before parse db tx')
             // async.each(transactions, function (transaction, cb) {
             //   transaction.from_db = true
             //   self.parse_new_mempool_transaction(transaction, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, cb)
             // },
             // function (err) {
             //   if (err) return cb(err)
-            //   logger.info('after parse db tx')
+            //   console.log('after parse db tx')
             execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_utxos_bulk, assets_transactions_bulk, assets_addresses_bulk, raw_transaction_bulk], cb)
             // })
           })
