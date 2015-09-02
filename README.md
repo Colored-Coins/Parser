@@ -1,6 +1,8 @@
 # Colored Coins Block Parser
 [![Build Status](https://travis-ci.org/Colored-Coins/Parser.svg?branch=master)](https://travis-ci.org/Colored-Coins/Parser) [![Coverage Status](https://coveralls.io/repos/Colored-Coins/Parser/badge.svg?branch=master)](https://coveralls.io/r/Colored-Coins/Parser?branch=master) [![npm version](https://badge.fury.io/js/cc-block-parser.svg)](http://badge.fury.io/js/cc-block-parser) [![npm version](http://slack.coloredcoins.org/badge.svg)](http://slack.coloredcoins.org)
 
+[![js-standard-style](https://cdn.rawgit.com/feross/standard/master/badge.svg)](https://github.com/feross/standard)
+
 Connects to Bitcoind (Json RPC) and parse the blockchain into mongodb including Colored-Coins asset data, utxo's for address and much more.
 
 ### Installation

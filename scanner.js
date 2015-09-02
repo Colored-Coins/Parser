@@ -5,20 +5,22 @@ var _ = require('lodash')
 var CCTransaction = require('cc-transaction')
 var assetIdencoder = require('cc-assetid-encoder')
 var bitcoin = require('bitcoin')
+
 var properties
 var bitcoin_rpc
 var logger
-var Blocks
-var RawTransactions
-var Utxo
-var AddressesTransactions
-var AddressesUtxos
-var AssetsTransactions
-var AssetsUtxos
-var AssetsAddresses
 var debug
 
-function Scanner (settings) {
+var Blocks = require(__dirname + '/model/blocks')
+var RawTransactions = require(__dirname + '/model/rawtransactions')
+var Utxo = require(__dirname + '/model/utxo')
+var AddressesTransactions = require(__dirname + '/model/addressestransactions')
+var AddressesUtxos = require(__dirname + '/model/addressesutxos')
+var AssetsTransactions = require(__dirname + '/model/assetstransactions')
+var AssetsUtxos = require(__dirname + '/model/assetsutxos')
+var AssetsAddresses = require(__dirname + '/model/assetsaddresses')
+
+function Scanner (settings, db) {
   debug = settings.debug
   properties = settings.properties
   this.next_hash = settings.next_hash
@@ -27,14 +29,15 @@ function Scanner (settings) {
   this.last_fully_parsed_block = settings.last_fully_parsed_block
   bitcoin_rpc = new bitcoin.Client(settings)
   logger = settings.logger
-  Blocks = settings.Blocks
-  RawTransactions = settings.RawTransactions
-  Utxo = settings.Utxo
-  AddressesTransactions = settings.AddressesTransactions
-  AddressesUtxos = settings.AddressesUtxos
-  AssetsTransactions = settings.AssetsTransactions
-  AssetsUtxos = settings.AssetsUtxos
-  AssetsAddresses = settings.AssetsAddresses
+
+  db.model('blocks', Blocks)
+  db.model('rawtransactions', RawTransactions)
+  db.model('utxo', Utxo)
+  db.model('addressestransactions', AddressesTransactions)
+  db.model('addressesutxos', AddressesUtxos)
+  db.model('assetstransactions', AssetsTransactions)
+  db.model('assetsutxos', AssetsUtxos)
+  db.model('assetsaddresses', AssetsAddresses)
 
   this.on('newblock', function (newblock) {
     process.send({newblock: newblock})
