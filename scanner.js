@@ -45,6 +45,15 @@ function Scanner (settings) {
   this.on('newcctransaction', function (newcctransaction) {
     process.send({newcctransaction: newcctransaction})
   })
+  this.on('revertedblock', function (revertedblock) {
+    process.send({revertedblock: revertedblock})
+  })
+  this.on('revertedtransaction', function (revertedtransaction) {
+    process.send({revertedtransaction: revertedtransaction})
+  })
+  this.on('revertedcctransaction', function (revertedcctransaction) {
+    process.send({revertedcctransaction: revertedcctransaction})
+  })
   this.on('mempool', function () {
     process.send({mempool: true})
   })
@@ -121,7 +130,10 @@ Scanner.prototype.revert_block = function (block_height, callback) {
   Blocks.findOne(conditions).exec(function (err, block_data) {
     if (err) return callback(err)
     if (!block_data || !block_data.tx) return callback()
-
+    var block_id = {
+      height: block_data.height,
+      hash: block_data.hash
+    }
     var utxo_bulk = Utxo.collection.initializeOrderedBulkOp()
     // var holders_bulk = Holders.collection.initializeOrderedBulkOp()
     var addresses_transactions_bulk = AddressesTransactions.collection.initializeOrderedBulkOp()
@@ -131,14 +143,29 @@ Scanner.prototype.revert_block = function (block_height, callback) {
     var raw_transaction_bulk = RawTransactions.collection.initializeOrderedBulkOp()
 
     // logger.debug('reverting '+block_data.tx.length+' txs.')
+    var txid = []
+    var colored_txids = []
     async.eachSeries(block_data.tx.reverse(), function (txid, cb) {
-      self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, cb)
+      txids.push(txid)
+      self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, function (err, colored) {
+        if (err) return cb(err)
+        if (colored) {
+          colored_txids.push(txid)
+        }
+        cb()
+      })
     },
     function (err) {
       if (err) return callback(err)
       // logger.debug('executing bulks')
       execute_bulks([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
         if (err) return callback(err)
+        txids.forEach(function (txid) {
+          self.emit('revertedtransaction', {txid: txid})
+        })
+        colored_txids.forEach(function (txid) {
+          self.emit('revertedcctransaction', {txid: txid})
+        })
         // logger.debug('deleting block')
         Blocks.remove(conditions).exec(function (err) {
           if (err) return callback(err)
@@ -179,7 +206,7 @@ Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_
       if (err) return callback(err)
       raw_transaction_bulk.find(conditions).remove()
       // logger.debug('tx '+txid+' reverted.')
-      callback()
+      callback(null, tx.colored)
     })
   })
 }
@@ -484,7 +511,8 @@ Scanner.prototype.parse_cc = function (err, callback) {
           raw_transaction_bulk.find(conditions).updateOne({
             $set: {
               vout: transaction_data.vout,
-              ccparsed: true
+              ccparsed: true,
+              overflow: transaction_data.overflow || false
             }
           })
           emits.push(['newcctransaction', transaction_data])
@@ -933,8 +961,8 @@ var add_remove_to_bulk = function (utxos, utxos_bulk, block_height, txid) {
   return is_utxos_bulk
 }
 
-var get_assets_outputs = function (transaction_data) {
-  transaction_data = JSON.parse(JSON.stringify(transaction_data))
+var get_assets_outputs = function (raw_transaction) {
+  var transaction_data = JSON.parse(JSON.stringify(raw_transaction))
   var ccdata = transaction_data.ccdata[0]
   var assets = []
   // var issuedassetid = null
@@ -1029,6 +1057,9 @@ var get_assets_outputs = function (transaction_data) {
       }
       else overflow = 0
     })
+    if (overflow) {
+      raw_transaction.overflow = true
+    }
   }) // prev_outputs.forEach
   assets = assets.map(function (output_assets) {
     return output_assets.filter(function (asset) { return asset.amount > 0 })
