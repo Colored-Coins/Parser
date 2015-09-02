@@ -10,16 +10,8 @@ var properties
 var bitcoin_rpc
 var debug
 
-var Blocks = require(__dirname + '/models/blocks')
-var RawTransactions = require(__dirname + '/models/rawtransactions')
-var Utxo = require(__dirname + '/models/utxo')
-var AddressesTransactions = require(__dirname + '/models/addressestransactions')
-var AddressesUtxos = require(__dirname + '/models/addressesutxos')
-var AssetsTransactions = require(__dirname + '/models/assetstransactions')
-var AssetsUtxos = require(__dirname + '/models/assetsutxos')
-var AssetsAddresses = require(__dirname + '/models/assetsaddresses')
-
 function Scanner (settings, db) {
+  // console.log('Mongoose', db)
   debug = settings.debug
   properties = settings.properties
   this.next_hash = settings.next_hash
@@ -28,14 +20,14 @@ function Scanner (settings, db) {
   this.last_fully_parsed_block = settings.last_fully_parsed_block
   bitcoin_rpc = new bitcoin.Client(settings.rpc_settings)
 
-  db.model('blocks', Blocks)
-  db.model('rawtransactions', RawTransactions)
-  db.model('utxo', Utxo)
-  db.model('addressestransactions', AddressesTransactions)
-  db.model('addressesutxos', AddressesUtxos)
-  db.model('assetstransactions', AssetsTransactions)
-  db.model('assetsutxos', AssetsUtxos)
-  db.model('assetsaddresses', AssetsAddresses)
+  this.Blocks = db.model('blocks', require(__dirname + '/models/blocks')(db))
+  this.RawTransactions = db.model('rawtransactions', require(__dirname + '/models/rawtransactions')(db))
+  this.Utxo = db.model('utxo', require(__dirname + '/models/utxo')(db))
+  this.AddressesTransactions = db.model('addressestransactions', require(__dirname + '/models/addressestransactions')(db))
+  this.AddressesUtxos = db.model('addressesutxos', require(__dirname + '/models/addressesutxos')(db))
+  this.AssetsTransactions = db.model('assetstransactions', require(__dirname + '/models/assetstransactions')(db))
+  this.AssetsUtxos = db.model('assetsutxos', require(__dirname + '/models/assetsutxos')(db))
+  this.AssetsAddresses = db.model('assetsaddresses', require(__dirname + '/models/assetsaddresses')(db))
 
   this.on('newblock', function (newblock) {
     process.send({newblock: newblock})
@@ -128,20 +120,20 @@ Scanner.prototype.revert_block = function (block_height, callback) {
   var conditions = {
     height: block_height
   }
-  Blocks.findOne(conditions).exec(function (err, block_data) {
+  self.Blocks.findOne(conditions).exec(function (err, block_data) {
     if (err) return callback(err)
     if (!block_data || !block_data.tx) return callback()
     var block_id = {
       height: block_data.height,
       hash: block_data.hash
     }
-    var utxo_bulk = Utxo.collection.initializeOrderedBulkOp()
+    var utxo_bulk = self.Utxo.collection.initializeOrderedBulkOp()
     // var holders_bulk = Holders.collection.initializeOrderedBulkOp()
-    var addresses_transactions_bulk = AddressesTransactions.collection.initializeOrderedBulkOp()
-    var addresses_utxos_bulk = AddressesUtxos.collection.initializeOrderedBulkOp()
-    var assets_transactions_bulk = AssetsTransactions.collection.initializeOrderedBulkOp()
-    var assets_utxos_bulk = AssetsUtxos.collection.initializeOrderedBulkOp()
-    var raw_transaction_bulk = RawTransactions.collection.initializeOrderedBulkOp()
+    var addresses_transactions_bulk = self.AddressesTransactions.collection.initializeOrderedBulkOp()
+    var addresses_utxos_bulk = self.AddressesUtxos.collection.initializeOrderedBulkOp()
+    var assets_transactions_bulk = self.AssetsTransactions.collection.initializeOrderedBulkOp()
+    var assets_utxos_bulk = self.AssetsUtxos.collection.initializeOrderedBulkOp()
+    var raw_transaction_bulk = self.RawTransactions.collection.initializeOrderedBulkOp()
 
     // logger.debug('reverting '+block_data.tx.length+' txs.')
     var txids = []
@@ -168,9 +160,10 @@ Scanner.prototype.revert_block = function (block_height, callback) {
           self.emit('revertedcctransaction', {txid: txid})
         })
         // logger.debug('deleting block')
-        Blocks.remove(conditions).exec(function (err) {
+        self.Blocks.remove(conditions).exec(function (err) {
           if (err) return callback(err)
           // logger.debug('setting hashes')
+          self.emit('revertedblock', block_id)
           self.set_last_hash(block_data.previousblockhash)
           self.set_last_block(block_data.height - 1)
           self.set_next_hash(null)
@@ -188,7 +181,7 @@ Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_
     txid: txid
   }
   // logger.debug('reverting tx '+txid)
-  RawTransactions.findOne(conditions).exec(function (err, tx) {
+  this.RawTransactions.findOne(conditions).exec(function (err, tx) {
     if (err) return callback(err)
     if (!tx) return callback()
     async.waterfall([
@@ -225,7 +218,7 @@ var revert_vin = function (txid, vins, utxo_bulk, addresses_transactions_bulk, a
   conditions = {
     $or: conditions
   }
-  Utxo.find(conditions).exec(function (err, useds) {
+  this.Utxo.find(conditions).exec(function (err, useds) {
     if (err) return callback(err)
     if (!useds || !useds.length) return callback()
     useds.forEach(function (used) {
@@ -349,7 +342,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
         self.emit(emit[0], emit[1])
       })
       if (empty) {
-        var bulk = Blocks.collection.initializeUnorderedBulkOp()
+        var bulk = self.Blocks.collection.initializeUnorderedBulkOp()
         raw_block_datas.forEach(function (raw_block_data) {
           bulk.find({hash: raw_block_data.hash}).updateOne({
             $set: {
@@ -368,15 +361,15 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       }
     }
 
-    var utxo_bulk = Utxo.collection.initializeUnorderedBulkOp()
+    var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
     utxo_bulk.bulk_name = 'utxo_bulk'
-    var addresses_transactions_bulk = AddressesTransactions.collection.initializeUnorderedBulkOp()
+    var addresses_transactions_bulk = self.AddressesTransactions.collection.initializeUnorderedBulkOp()
     addresses_transactions_bulk.bulk_name = 'addresses_transactions_bulk'
-    var addresses_utxos_bulk = AddressesUtxos.collection.initializeUnorderedBulkOp()
+    var addresses_utxos_bulk = self.AddressesUtxos.collection.initializeUnorderedBulkOp()
     addresses_utxos_bulk.bulk_name = 'addresses_utxos_bulk'
-    var raw_transaction_bulk = RawTransactions.collection.initializeUnorderedBulkOp()
+    var raw_transaction_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
     raw_transaction_bulk.bulk_name = 'raw_transaction_bulk'
-    var assets_utxos_bulk = AssetsUtxos.collection.initializeUnorderedBulkOp()
+    var assets_utxos_bulk = self.AssetsUtxos.collection.initializeUnorderedBulkOp()
     assets_utxos_bulk.bulk_name = 'assets_utxos_bulk'
 
     self.get_need_to_fix_transactions_by_blocks(first_block, last_block, function (err, transactions_data) {
@@ -452,7 +445,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
         self.emit(emit[0], emit[1])
       })
       if (empty) {
-        var bulk = Blocks.collection.initializeUnorderedBulkOp()
+        var bulk = self.Blocks.collection.initializeUnorderedBulkOp()
         raw_block_datas.forEach(function (raw_block_data) {
           if (raw_block_data.txsparsed) {
             self.emit('newblock', raw_block_data)
@@ -478,15 +471,15 @@ Scanner.prototype.parse_cc = function (err, callback) {
       }
     }
 
-    var utxo_bulk = Utxo.collection.initializeUnorderedBulkOp()
+    var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
     utxo_bulk.bulk_name = 'utxo_bulk'
-    var raw_transaction_bulk = RawTransactions.collection.initializeUnorderedBulkOp()
+    var raw_transaction_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
     raw_transaction_bulk.bulk_name = 'raw_transaction_bulk'
-    var assets_transactions_bulk = AssetsTransactions.collection.initializeUnorderedBulkOp()
+    var assets_transactions_bulk = self.AssetsTransactions.collection.initializeUnorderedBulkOp()
     assets_transactions_bulk.bulk_name = 'assets_transactions_bulk'
-    var assets_utxos_bulk = AssetsUtxos.collection.initializeUnorderedBulkOp()
+    var assets_utxos_bulk = self.AssetsUtxos.collection.initializeUnorderedBulkOp()
     assets_utxos_bulk.bulk_name = 'assets_utxos_bulk'
-    var assets_addresses_bulk = AssetsAddresses.collection.initializeUnorderedBulkOp()
+    var assets_addresses_bulk = self.AssetsAddresses.collection.initializeUnorderedBulkOp()
     assets_addresses_bulk.bulk_name = 'assets_addresses_bulk'
 
     self.get_need_to_cc_parse_transactions_by_blocks(first_block, last_block, function (err, transactions_data) {
@@ -584,7 +577,7 @@ Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_
     blockheight: {$gte: first_block, $lte: last_block}
   }
 
-  RawTransactions.find(conditions).sort('blockheight').limit(1000).exec(callback)
+  this.RawTransactions.find(conditions).sort('blockheight').limit(1000).exec(callback)
 }
 
 Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block, last_block, callback) {
@@ -598,7 +591,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     blockheight: 1,
     tries: 1
   }
-  RawTransactions.find(conditions).sort(sort).limit(200).exec(callback)
+  this.RawTransactions.find(conditions).sort(sort).limit(200).exec(callback)
 }
 
 Scanner.prototype.set_next_hash = function (next_hash) {
@@ -641,7 +634,7 @@ Scanner.prototype.get_next_block_to_cc_parse = function (limit, callback) {
     txlength: 1,
     txsparsed: 1
   }
-  Blocks.find(conditions, projection)
+  this.Blocks.find(conditions, projection)
   .sort('height')
   .limit(limit)
   .exec(callback)
@@ -662,7 +655,7 @@ Scanner.prototype.get_next_block_to_fix = function (limit, callback) {
     // confirmations: 1,
     // txlength: 1
   }
-  Blocks.find(conditions, projection)
+  this.Blocks.find(conditions, projection)
   .sort('height')
   .limit(limit)
   .exec(callback)
@@ -673,7 +666,8 @@ Scanner.prototype.get_next_new_block = function (callback) {
   if (properties.last_block && properties.last_hash) {
     return callback(null, properties.last_block + 1, properties.last_hash)
   }
-  Blocks.findOne({txinserted: true})
+  console.log('scanner.Blocks', !!self.Blocks)
+  self.Blocks.findOne({txinserted: true})
     .sort('-height')
     .exec(function (err, block_data) {
       if (err) return callback(err)
@@ -741,13 +735,13 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
 
   // console.log(raw_block_data.tx)
 
-  var utxo_bulk = Utxo.collection.initializeUnorderedBulkOp()
+  var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
   utxo_bulk.bulk_name = 'utxo_bulk'
-  var addresses_transactions_bulk = AddressesTransactions.collection.initializeUnorderedBulkOp()
+  var addresses_transactions_bulk = self.AddressesTransactions.collection.initializeUnorderedBulkOp()
   addresses_transactions_bulk.bulk_name = 'addresses_transactions_bulk'
-  var addresses_utxos_bulk = AddressesUtxos.collection.initializeUnorderedBulkOp()
+  var addresses_utxos_bulk = self.AddressesUtxos.collection.initializeUnorderedBulkOp()
   addresses_utxos_bulk.bulk_name = 'addresses_utxos_bulk'
-  var raw_transaction_bulk = RawTransactions.collection.initializeUnorderedBulkOp()
+  var raw_transaction_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
   raw_transaction_bulk.bulk_name = 'raw_transaction_bulk'
   // var addresses_assets = {}
 
@@ -779,7 +773,7 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
       if (err) return callback(err)
       raw_block_data.txinserted = true
       // self.emit('newblock', raw_block_data) //TODO: add total sent && emit when finised
-      var blocks_bulk = Blocks.collection.initializeOrderedBulkOp()
+      var blocks_bulk = self.Blocks.collection.initializeOrderedBulkOp()
       if (!properties.next_hash) {
         blocks_bulk.find({hash: raw_block_data.previousblockhash}).updateOne({$set: {nextblockhash: raw_block_data.hash}})
       }
@@ -823,7 +817,7 @@ var to_discrete = function (raw_transaction_data) {
 }
 
 Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_utxos_bulk, callback) {
-  // var self = this
+  var self = this
   var coinbase = false
   var utxos
 
@@ -862,7 +856,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
         }
       })
       if (!coinbase) {
-        RawTransactions.find({'$or': conditions}).exec(cb)
+        self.RawTransactions.find({'$or': conditions}).exec(cb)
       } else {
         cb(null, [])
       }
@@ -897,7 +891,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
         })
       }
       if (conditions.length) {
-        Utxo.find({'$or': conditions}).exec(cb)
+        self.Utxo.find({'$or': conditions}).exec(cb)
       } else {
         return cb(null, [])
       }
@@ -1217,7 +1211,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   async.waterfall([
     function (cb) {
       if (raw_transaction_data.from_db) return cb(null, raw_transaction_data)
-      RawTransactions.findOne(conditions, cb)
+      self.RawTransactions.findOne(conditions, cb)
     },
     function (l_transaction_data, cb) {
       transaction_data = l_transaction_data
@@ -1287,19 +1281,19 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     var i = 0
     async.whilst(function () { return i < whole_txids.length },
       function (cb) {
-        var utxo_bulk = Utxo.collection.initializeUnorderedBulkOp()
+        var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
         utxo_bulk.bulk_name = 'utxo_bulk'
-        var raw_transaction_bulk = RawTransactions.collection.initializeUnorderedBulkOp()
+        var raw_transaction_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
         raw_transaction_bulk.bulk_name = 'raw_transaction_bulk'
-        var addresses_transactions_bulk = AddressesTransactions.collection.initializeUnorderedBulkOp()
+        var addresses_transactions_bulk = self.AddressesTransactions.collection.initializeUnorderedBulkOp()
         addresses_transactions_bulk.bulk_name = 'addresses_transactions_bulk'
-        var addresses_utxos_bulk = AddressesUtxos.collection.initializeUnorderedBulkOp()
+        var addresses_utxos_bulk = self.AddressesUtxos.collection.initializeUnorderedBulkOp()
         addresses_utxos_bulk.bulk_name = 'addresses_utxos_bulk'
-        var assets_utxos_bulk = AssetsUtxos.collection.initializeUnorderedBulkOp()
+        var assets_utxos_bulk = self.AssetsUtxos.collection.initializeUnorderedBulkOp()
         assets_utxos_bulk.bulk_name = 'assets_utxos_bulk'
-        var assets_transactions_bulk = AssetsTransactions.collection.initializeUnorderedBulkOp()
+        var assets_transactions_bulk = self.AssetsTransactions.collection.initializeUnorderedBulkOp()
         assets_transactions_bulk.bulk_name = 'assets_transactions_bulk'
-        var assets_addresses_bulk = AssetsAddresses.collection.initializeUnorderedBulkOp()
+        var assets_addresses_bulk = self.AssetsAddresses.collection.initializeUnorderedBulkOp()
         assets_addresses_bulk.bulk_name = 'assets_addresses_bulk'
 
         var n_batch = 5000
@@ -1317,7 +1311,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         var projection = {
           txid: 1
         }
-        RawTransactions.find(conditions, projection, function (err, transactions) {
+        self.RawTransactions.find(conditions, projection, function (err, transactions) {
           // console.log('after find db tx')
           if (err) return cb(err)
           transactions.forEach(function (transaction) {
@@ -1369,19 +1363,19 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   // var ins = []
   var PARSED = 'PARSED'
   var transaction
-  var utxo_bulk = Utxo.collection.initializeUnorderedBulkOp()
+  var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
   utxo_bulk.bulk_name = 'utxo_bulk'
-  var raw_transaction_bulk = RawTransactions.collection.initializeUnorderedBulkOp()
+  var raw_transaction_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
   raw_transaction_bulk.bulk_name = 'raw_transaction_bulk'
-  var addresses_transactions_bulk = AddressesTransactions.collection.initializeUnorderedBulkOp()
+  var addresses_transactions_bulk = self.AddressesTransactions.collection.initializeUnorderedBulkOp()
   addresses_transactions_bulk.bulk_name = 'addresses_transactions_bulk'
-  var addresses_utxos_bulk = AddressesUtxos.collection.initializeUnorderedBulkOp()
+  var addresses_utxos_bulk = self.AddressesUtxos.collection.initializeUnorderedBulkOp()
   addresses_utxos_bulk.bulk_name = 'addresses_utxos_bulk'
-  var assets_utxos_bulk = AssetsUtxos.collection.initializeUnorderedBulkOp()
+  var assets_utxos_bulk = self.AssetsUtxos.collection.initializeUnorderedBulkOp()
   assets_utxos_bulk.bulk_name = 'assets_utxos_bulk'
-  var assets_transactions_bulk = AssetsTransactions.collection.initializeUnorderedBulkOp()
+  var assets_transactions_bulk = self.AssetsTransactions.collection.initializeUnorderedBulkOp()
   assets_transactions_bulk.bulk_name = 'assets_transactions_bulk'
-  var assets_addresses_bulk = AssetsAddresses.collection.initializeUnorderedBulkOp()
+  var assets_addresses_bulk = self.AssetsAddresses.collection.initializeUnorderedBulkOp()
   assets_addresses_bulk.bulk_name = 'assets_addresses_bulk'
   async.waterfall([
     function (cb) {
@@ -1393,7 +1387,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       var projection = {
         txid: 1
       }
-      RawTransactions.findOne(conditions, projection).exec(cb)
+      self.RawTransactions.findOne(conditions, projection).exec(cb)
     },
     function (tx, cb) {
       if (tx) return cb(PARSED)
