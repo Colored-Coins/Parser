@@ -1,6 +1,4 @@
-var properties = global.properties
-
-module.exports = function (mongoose) {
+module.exports = function (mongoose, properties) {
   var vin = new mongoose.Schema({
     sequence: Number,
     coinbase: {type: String, index: true},

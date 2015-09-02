@@ -20,8 +20,8 @@ function Scanner (settings, db) {
   this.last_fully_parsed_block = settings.last_fully_parsed_block
   bitcoin_rpc = new bitcoin.Client(settings.rpc_settings)
 
-  this.Blocks = db.model('blocks', require(__dirname + '/models/blocks')(db))
-  this.RawTransactions = db.model('rawtransactions', require(__dirname + '/models/rawtransactions')(db))
+  this.Blocks = db.model('blocks', require(__dirname + '/models/blocks')(db, properties))
+  this.RawTransactions = db.model('rawtransactions', require(__dirname + '/models/rawtransactions')(db, properties))
   this.Utxo = db.model('utxo', require(__dirname + '/models/utxo')(db))
   this.AddressesTransactions = db.model('addressestransactions', require(__dirname + '/models/addressestransactions')(db))
   this.AddressesUtxos = db.model('addressesutxos', require(__dirname + '/models/addressesutxos')(db))

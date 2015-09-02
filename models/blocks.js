@@ -1,6 +1,4 @@
-var properties = global.properties
-
-module.exports = function (mongoose) {
+module.exports = function (mongoose, properties) {
   var BlocksSchema = new mongoose.Schema({
     hash: { type: String, index: { unique: true } },
     previousblockhash: String,
