@@ -10,14 +10,14 @@ var properties
 var bitcoin_rpc
 var debug
 
-var Blocks = require(__dirname + '/model/blocks')
-var RawTransactions = require(__dirname + '/model/rawtransactions')
-var Utxo = require(__dirname + '/model/utxo')
-var AddressesTransactions = require(__dirname + '/model/addressestransactions')
-var AddressesUtxos = require(__dirname + '/model/addressesutxos')
-var AssetsTransactions = require(__dirname + '/model/assetstransactions')
-var AssetsUtxos = require(__dirname + '/model/assetsutxos')
-var AssetsAddresses = require(__dirname + '/model/assetsaddresses')
+var Blocks = require(__dirname + '/models/blocks')
+var RawTransactions = require(__dirname + '/models/rawtransactions')
+var Utxo = require(__dirname + '/models/utxo')
+var AddressesTransactions = require(__dirname + '/models/addressestransactions')
+var AddressesUtxos = require(__dirname + '/models/addressesutxos')
+var AssetsTransactions = require(__dirname + '/models/assetstransactions')
+var AssetsUtxos = require(__dirname + '/models/assetsutxos')
+var AssetsAddresses = require(__dirname + '/models/assetsaddresses')
 
 function Scanner (settings, db) {
   debug = settings.debug
