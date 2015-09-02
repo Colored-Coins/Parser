@@ -4,7 +4,7 @@ var events = require('events')
 var _ = require('lodash')
 var CCTransaction = require('cc-transaction')
 var assetIdencoder = require('cc-assetid-encoder')
-var bitcoin = require('bitcoin')
+var bitcoin = require('bitcoin-async')
 
 var properties
 var bitcoin_rpc

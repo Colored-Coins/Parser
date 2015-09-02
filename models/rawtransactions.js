@@ -92,7 +92,8 @@ var RawTransactionsSchema = new mongoose.Schema({
   iosparsed: {type: Boolean, index: true, default: false},
   tries: {type: Number, index: true, default: 0},
   colored: {type: Boolean, index: true, default: false},
-  ccparsed: {type: Boolean, index: true, default: false}
+  ccparsed: {type: Boolean, index: true, default: false},
+  overflow: {type: Boolean, index: true, default: false}
 })
 
 RawTransactionsSchema.index({
