@@ -80,7 +80,7 @@ module.exports = function (mongoose, properties) {
     totalsent: { type: Number, set: function (v) { return Math.round(v) } },
     blockhash: {type: String, index: true},
     time: {type: Number, index: true},
-    blocktime: Date,
+    blocktime: {type: Number, index: true},
     blockheight: {type: Number, index: true},
     confirmations: Number,
     vin: [vin],
