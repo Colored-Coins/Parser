@@ -963,6 +963,7 @@ var get_assets_outputs = function (raw_transaction) {
   // var issuedassetid = null
   /*var encodeItem = { assetid: 0, iputindex: 0, amountleft: 0 }*/
   // is it an issuece
+  var empty_issuance = ccdata.type === 'issuance' && !ccdata.amount
   if (ccdata.type === 'issuance') {
     // logger.debug('issuance!')
     var opts = {
@@ -1057,7 +1058,7 @@ var get_assets_outputs = function (raw_transaction) {
     }
   }) // prev_outputs.forEach
   assets = assets.map(function (output_assets) {
-    return output_assets.filter(function (asset) { return asset.amount > 0 })
+    return output_assets.filter(function (asset) { return asset.amount > 0 || empty_issuance})
   })
   return assets
 }
