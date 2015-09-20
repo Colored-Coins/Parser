@@ -803,7 +803,7 @@ Scanner.prototype.get_raw_transaction = function (tx_hash, callback) {
 }
 
 var to_discrete = function (raw_transaction_data) {
-  if (!raw_transaction_data.vout) return raw_transaction_data
+  if (!raw_transaction_data || !raw_transaction_data.vout) return raw_transaction_data
 
   raw_transaction_data.vout.forEach(function (vout) {
     if (vout.value) {
@@ -1327,6 +1327,10 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           })
           // console.log('before find and parse rpc tx ('+txids.length+')')
           bitcoin_rpc.cmd(command_arr, function (raw_transaction_data, cb2) {
+            if (!raw_transaction_data) {
+              logger.info('Null transaction')
+              return cb2()
+            }
             raw_transaction_data = to_discrete(raw_transaction_data)
             self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, cb2)
           },
