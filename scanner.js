@@ -510,7 +510,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
             }
           })
           emits.push(['newcctransaction', transaction_data])
-          // self.emit('newcctransaction', transaction_data)
+          emits.push(['newtransaction', transaction_data])
         }
       })
       // logger.debug('executing vins bulks')
@@ -1204,8 +1204,8 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   var self = this
   var transaction_data
   var did_work = false
-  var parsing_vin = false
-  var emit
+  // var parsing_vin = false
+  var emits = []
   var conditions = {
     txid: raw_transaction_data.txid
   }
@@ -1231,7 +1231,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         cb(null, null, true)
       } else {
         // logger.debug('parsing tx vin: '+raw_transaction_data.txid)
-        parsing_vin = true
+        did_work = true
         self.parse_vin(raw_transaction_data, -1, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_utxos_bulk, cb)
       }
     },
@@ -1239,20 +1239,18 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       if (raw_transaction_data.ccparsed) {
         cb(null, null)
       } else {
-        raw_transaction_data.iosparsed = parsing_vin && all_fixed
-        did_work = did_work && parsing_vin && all_fixed
+        raw_transaction_data.iosparsed = all_fixed
+        // did_work = did_work || (parsing_vin && all_fixed)
         if (all_fixed && raw_transaction_data.colored && !raw_transaction_data.ccparsed) {
           self.parse_cc_tx(raw_transaction_data, utxo_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk)
           raw_transaction_data.ccparsed = true
           did_work = true
         }
-        if (did_work && (all_fixed || raw_transaction_data.ccparsed)) {
-          // logger.debug('emiting tx:',raw_transaction_data.txid)
-          emit = ['newtransaction', raw_transaction_data]
+        if (did_work && all_fixed) {
+          emits.push(['newtransaction', raw_transaction_data])
           // self.emit('newtransaction', raw_transaction_data)
           if (raw_transaction_data.colored) {
-            // logger.debug('emiting cc tx:',raw_transaction_data.txid)
-            emit = ['newcctransaction', raw_transaction_data]
+            emits.push(['newcctransaction', raw_transaction_data])
             // self.emit('newcctransaction', raw_transaction_data)
           }
         }
@@ -1265,7 +1263,9 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   ],
   function (err) {
     if (err) return callback(err)
-    if (emit) self.emit(emit[0], emit[1])
+    emits.forEach(function (emit) {
+      self.emit(emit[0], emit[1])
+    })
     callback()
   })
 }
@@ -1332,6 +1332,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
               return cb2()
             }
             raw_transaction_data = to_discrete(raw_transaction_data)
+            // logger.debug('parsing mempool transaction', raw_transaction_data.txid)
             self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, cb2)
           },
           function (err) {
