@@ -82,7 +82,7 @@ module.exports = function (mongoose, properties) {
     time: {type: Number, index: true},
     blocktime: {type: Number, index: true},
     blockheight: {type: Number, index: true},
-    confirmations: Number,
+    confirmations: {type: Number, index: true},
     vin: [vin],
     vout: [vout],
     ccdata: [ccdata],
