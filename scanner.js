@@ -1274,21 +1274,30 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   var self = this
 
   self.emit('mempool')
-  var db_txids = []
+  var db_parsed_txids = []
+  var db_unparsed_txids = []
   // console.log('before find db tx')
   var conditions = {
-    confirmations: 0,
-    iosparsed: true,
-    $where: 'this.colored == this.ccparsed'
+    blockheight: -1
+    // iosparsed: true,
+    // $where: 'this.colored == this.ccparsed'
   }
   var projection = {
-    txid: 1
+    txid: 1,
+    iosparsed: 1,
+    colored: 1,
+    ccparsed: 1
   }
   self.RawTransactions.find(conditions, projection, function (err, transactions) {
     // console.log('after find db tx')
     if (err) return callback(err)
     transactions.forEach(function (transaction) {
-      db_txids.push(transaction.txid)
+      if (transaction.iosparsed && transaction.colored == transaction.ccparsed) {
+        db_parsed_txids.push(transaction.txid)
+      }
+      else {
+        db_unparsed_txids.push(transaction.txid)
+      }
     })
     bitcoin_rpc.cmd('getrawmempool', [], function (err, whole_txids) {
       if (err) return callback(err)
@@ -1316,9 +1325,11 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           var txids = whole_txids.slice(i, i + n_batch)
           console.log('parsing mempool txs (' + i + '-' + (i + txids.length) + ',' + whole_txids.length + ')')
           i += n_batch
-          var txids_intersection = _.intersection(db_txids, txids) // txids from this batch that allready parsed in db
+          var txids_intersection = _.intersection(db_parsed_txids, txids) // txids from this batch that allready parsed in db
           var new_txids = _.xor(txids_intersection, txids) // txids from this batch that no parsed in db
-          db_txids = _.xor(txids_intersection, db_txids) // the rest of the txids in the db (not yet found in mempool)
+          db_parsed_txids = _.xor(txids_intersection, db_parsed_txids) // the rest of the txids in the db (not yet found in mempool)
+          txids_intersection = _.intersection(db_unparsed_txids, txids) // txids that in mempool and db but not fully parsed
+          db_unparsed_txids = _.xor(txids_intersection, db_unparsed_txids) // the rest of the txids in the db (not yet found in mempool, not fullt parsed)
           var command_arr = []
           new_txids.forEach(function (txhash) {
             command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
@@ -1349,43 +1360,60 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         },
         function (err) {
           if (err) return callback(err)
+          var db_txids = db_parsed_txids.concat(db_unparsed_txids)
           if (!db_txids.length) return callback()
-          logger.info('need to revert '+db_txids.length+' txs from mempool.')  
-          var utxo_bulk = self.Utxo.collection.initializeOrderedBulkOp()
-          var addresses_transactions_bulk = self.AddressesTransactions.collection.initializeOrderedBulkOp()
-          var addresses_utxos_bulk = self.AddressesUtxos.collection.initializeOrderedBulkOp()
-          var assets_transactions_bulk = self.AssetsTransactions.collection.initializeOrderedBulkOp()
-          var assets_utxos_bulk = self.AssetsUtxos.collection.initializeOrderedBulkOp()
-          var raw_transaction_bulk = self.RawTransactions.collection.initializeOrderedBulkOp()
+          logger.info('need to revert '+db_txids.length+' txs from mempool.')
+          i = 0
+          n_batch = 5000
+          async.whilst(function () { return i < db_txids.length },
+            function (cb) {
+              var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
+              utxo_bulk.bulk_name = 'utxo_bulk'
+              var raw_transaction_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
+              raw_transaction_bulk.bulk_name = 'raw_transaction_bulk'
+              var addresses_transactions_bulk = self.AddressesTransactions.collection.initializeUnorderedBulkOp()
+              addresses_transactions_bulk.bulk_name = 'addresses_transactions_bulk'
+              var addresses_utxos_bulk = self.AddressesUtxos.collection.initializeUnorderedBulkOp()
+              addresses_utxos_bulk.bulk_name = 'addresses_utxos_bulk'
+              var assets_utxos_bulk = self.AssetsUtxos.collection.initializeUnorderedBulkOp()
+              assets_utxos_bulk.bulk_name = 'assets_utxos_bulk'
+              var assets_transactions_bulk = self.AssetsTransactions.collection.initializeUnorderedBulkOp()
+              assets_transactions_bulk.bulk_name = 'assets_transactions_bulk'
 
-          // logger.debug('reverting '+block_data.tx.length+' txs.')
-          var txids = []
-          var colored_txids = []
-           
-          async.eachSeries(db_txids, function (txid, cb) {
-            txids.push(txid)
-            self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, function (err, colored) {
-              if (err) return cb(err)
-              if (colored) {
-                colored_txids.push(txid)
-              }
-              cb()
-            })
-          },
-          function (err) {
-            if (err) return callback(err)
-            // logger.debug('executing bulks')
-            execute_bulks([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
-              if (err) return callback(err)
-              txids.forEach(function (txid) {
-                self.emit('revertedtransaction', {txid: txid})
+              var txids = db_txids.slice(i, i + n_batch)
+              console.log('revertung txs (' + i + '-' + (i + txids.length) + ',' + db_txids.length + ')')
+              i += n_batch
+              // logger.debug('reverting '+block_data.tx.length+' txs.')
+              var regular_txids = []
+              var colored_txids = []
+               
+              async.eachSeries(txids, function (txid, cb) {
+                regular_txids.push(txid)
+                self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, function (err, colored) {
+                  if (err) return cb(err)
+                  if (colored) {
+                    colored_txids.push(txid)
+                  }
+                  cb()
+                })
+              },
+              function (err) {
+                if (err) return cb(err)
+                // logger.debug('executing bulks')
+                execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
+                  if (err) return cb(err)
+                  regular_txids.forEach(function (txid) {
+                    self.emit('revertedtransaction', {txid: txid})
+                  })
+                  colored_txids.forEach(function (txid) {
+                    self.emit('revertedcctransaction', {txid: txid})
+                  })
+                  cb()
+                })
               })
-              colored_txids.forEach(function (txid) {
-                self.emit('revertedcctransaction', {txid: txid})
-              })
-              callback()
-            })
-          })
+            },
+            callback
+          )
         }
       )
     })
