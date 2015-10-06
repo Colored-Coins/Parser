@@ -187,7 +187,7 @@ Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_
     async.waterfall([
       function (cb) {
         // logger.debug('reverting vin')
-        self.revert_vin(txid, tx.vin, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, cb)
+        self.revert_vin(tx, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, cb)
       },
       function (cb) {
         // logger.debug('reverting vout')
@@ -205,7 +205,9 @@ Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_
   })
 }
 
-Scanner.prototype.revert_vin = function (txid, vins, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, callback) {
+Scanner.prototype.revert_vin = function (tx, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, callback) {
+  var txid = tx.txid
+  var vins = tx.vin
   if (!vins || !vins.length || vins[0].coinbase) return callback()
   var conditions = []
   vins.forEach(function (vin) {
@@ -222,36 +224,38 @@ Scanner.prototype.revert_vin = function (txid, vins, utxo_bulk, addresses_transa
     if (err) return callback(err)
     if (!useds || !useds.length) return callback()
     useds.forEach(function (used) {
-      if (used.addresses) {
-        used.addresses.forEach(function (address) {
-          var address_tx = {
-            address: address,
-            txid: txid
-          }
-          addresses_transactions_bulk.find(address_tx).remove()
+      if (used.usedTxid === txid) {
+        if (used.addresses) {
+          used.addresses.forEach(function (address) {
+            var address_tx = {
+              address: address,
+              txid: txid
+            }
+            addresses_transactions_bulk.find(address_tx).remove()
 
-          if (used.assets && used.assets.length) {
-            used.assets.forEach(function (asset) {
-              var asset_tx = {
-                assetId: asset.assetId,
-                txid: txid
-              }
-              assets_transactions_bulk.find(asset_tx).remove()
-            })
+            if (used.assets && used.assets.length) {
+              used.assets.forEach(function (asset) {
+                var asset_tx = {
+                  assetId: asset.assetId,
+                  txid: txid
+                }
+                assets_transactions_bulk.find(asset_tx).remove()
+              })
+            }
+          })
+        }
+        var cond = {
+          txid: used.txid,
+          index: used.index
+        }
+        utxo_bulk.find(cond).updateOne({
+          $set: {
+            used: false,
+            usedBlockheight: null,
+            usedTxid: null
           }
         })
       }
-      var cond = {
-        txid: used.txid,
-        index: used.index
-      }
-      utxo_bulk.find(cond).updateOne({
-        $set: {
-          used: false,
-          usedBlockheight: null,
-          usedTxid: null
-        }
-      })
     })
     callback()
   })
@@ -1381,7 +1385,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
               assets_transactions_bulk.bulk_name = 'assets_transactions_bulk'
 
               var txids = db_txids.slice(i, i + n_batch)
-              console.log('revertung txs (' + i + '-' + (i + txids.length) + ',' + db_txids.length + ')')
+              console.log('reverting txs (' + i + '-' + (i + txids.length) + ',' + db_txids.length + ')')
               i += n_batch
               // logger.debug('reverting '+block_data.tx.length+' txs.')
               var regular_txids = []
