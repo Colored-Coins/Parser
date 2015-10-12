@@ -1336,7 +1336,7 @@ Scanner.prototype.revert_txids = function (callback) {
   var self = this
 
   self.to_revert = _.uniq(self.to_revert)
-  if (!to_revert.length) return callback()
+  if (!self.to_revert.length) return callback()
   logger.info('need to revert '+self.to_revert.length+' txs from mempool.')
   var i = 0
   var n_batch = 5000
@@ -1378,6 +1378,10 @@ Scanner.prototype.revert_txids = function (callback) {
         execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
           if (err) return cb(err)
           regular_txids.forEach(function (txid) {
+            var index = self.to_revert.indexOf(txid)
+            if (index != -1) {
+              self.to_revert.splice(index, 1)
+            }
             self.emit('revertedtransaction', {txid: txid})
           })
           colored_txids.forEach(function (txid) {
@@ -1400,7 +1404,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   var cargo_size
 
   async.waterfall([
-    self.revert_txids,
+    self.revert_txids.bind(self),
     function (cb) {
       self.emit('mempool')
       var conditions = {
@@ -1441,9 +1445,9 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     },
     function (cb) {
       if (!--cargo_size) {
-        logger.debug('finish parsing of', new_txids.length-1, 'mempool transactions.')
+        // logger.debug('finish parsing of', new_txids.length-1, 'mempool transactions.')
         var db_txids = db_parsed_txids.concat(db_unparsed_txids)
-        self.to_revert.concat(db_txids)
+        self.to_revert = self.to_revert.concat(db_txids)
         cb()
       }
     }
