@@ -53,7 +53,7 @@ function Scanner (settings, db) {
     })
   }
 
-  this.mempool_cargo = async.cargo(this.parse_mempool_cargo.bind(this), 5000)
+  this.mempool_cargo = async.cargo(this.parse_mempool_cargo.bind(this), 1000)
 }
 
 util.inherits(Scanner, events.EventEmitter)
@@ -1298,10 +1298,14 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
 
   var command_arr = []
   txids = _.uniq(txids)
+  var ph_index = txids.indexOf('PH')
+  if (ph_index != -1) {
+    txids.splice(ph_index, 1)
+  }
+  logger.info('parsing mempool cargo ('+txids.length+')')
+  
   txids.forEach(function (txhash) {
-    if (txhash != 'PH') {
-      command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
-    }
+    command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
   })
   bitcoin_rpc.cmd(command_arr, function (raw_transaction_data, cb) {
     if (!raw_transaction_data) {
