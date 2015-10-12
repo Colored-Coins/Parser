@@ -29,27 +29,29 @@ function Scanner (settings, db) {
   this.AssetsUtxos = db.model('assetsutxos', require(__dirname + '/models/assetsutxos')(db))
   this.AssetsAddresses = db.model('assetsaddresses', require(__dirname + '/models/assetsaddresses')(db))
 
-  this.on('newblock', function (newblock) {
-    process.send({to: properties.roles.API, newblock: newblock})
-  })
-  this.on('newtransaction', function (newtransaction) {
-    process.send({to: properties.roles.API, newtransaction: newtransaction})
-  })
-  this.on('newcctransaction', function (newcctransaction) {
-    process.send({to: properties.roles.API, newcctransaction: newcctransaction})
-  })
-  this.on('revertedblock', function (revertedblock) {
-    process.send({to: properties.roles.API, revertedblock: revertedblock})
-  })
-  this.on('revertedtransaction', function (revertedtransaction) {
-    process.send({to: properties.roles.API, revertedtransaction: revertedtransaction})
-  })
-  this.on('revertedcctransaction', function (revertedcctransaction) {
-    process.send({to: properties.roles.API, revertedcctransaction: revertedcctransaction})
-  })
-  this.on('mempool', function () {
-    process.send({to: properties.roles.API, mempool: true})
-  })
+  if (process.env.ROLE === properties.roles.SCANNER) {
+    this.on('newblock', function (newblock) {
+      process.send({to: properties.roles.API, newblock: newblock})
+    })
+    this.on('newtransaction', function (newtransaction) {
+      process.send({to: properties.roles.API, newtransaction: newtransaction})
+    })
+    this.on('newcctransaction', function (newcctransaction) {
+      process.send({to: properties.roles.API, newcctransaction: newcctransaction})
+    })
+    this.on('revertedblock', function (revertedblock) {
+      process.send({to: properties.roles.API, revertedblock: revertedblock})
+    })
+    this.on('revertedtransaction', function (revertedtransaction) {
+      process.send({to: properties.roles.API, revertedtransaction: revertedtransaction})
+    })
+    this.on('revertedcctransaction', function (revertedcctransaction) {
+      process.send({to: properties.roles.API, revertedcctransaction: revertedcctransaction})
+    })
+    this.on('mempool', function () {
+      process.send({to: properties.roles.API, mempool: true})
+    })
+  }
 
   this.mempool_cargo = async.cargo(this.parse_mempool_cargo.bind(this), 5000)
 }
