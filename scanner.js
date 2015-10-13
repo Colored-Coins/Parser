@@ -1355,7 +1355,7 @@ Scanner.prototype.revert_txids = function (callback) {
       assets_transactions_bulk.bulk_name = 'assets_transactions_bulk'
 
       var txids = self.to_revert.slice(0, n_batch)
-      console.log('reverting txs (' txids.length + ',' + self.to_revert.length + ')')
+      console.log('reverting txs (' + txids.length + ',' + self.to_revert.length + ')')
       
       // logger.debug('reverting '+block_data.tx.length+' txs.')
       var regular_txids = []
