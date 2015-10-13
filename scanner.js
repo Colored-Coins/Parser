@@ -1338,9 +1338,8 @@ Scanner.prototype.revert_txids = function (callback) {
   self.to_revert = _.uniq(self.to_revert)
   if (!self.to_revert.length) return callback()
   logger.info('need to revert '+self.to_revert.length+' txs from mempool.')
-  var i = 0
   var n_batch = 5000
-  async.whilst(function () { return i < self.to_revert.length },
+  async.whilst(function () { return self.to_revert.length },
     function (cb) {
       var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
       utxo_bulk.bulk_name = 'utxo_bulk'
@@ -1355,9 +1354,9 @@ Scanner.prototype.revert_txids = function (callback) {
       var assets_transactions_bulk = self.AssetsTransactions.collection.initializeUnorderedBulkOp()
       assets_transactions_bulk.bulk_name = 'assets_transactions_bulk'
 
-      var txids = self.to_revert.slice(i, i + n_batch)
-      console.log('reverting txs (' + i + '-' + (i + txids.length) + ',' + self.to_revert.length + ')')
-      i += n_batch
+      var txids = self.to_revert.slice(0, n_batch)
+      console.log('reverting txs (' txids.length + ',' + self.to_revert.length + ')')
+      
       // logger.debug('reverting '+block_data.tx.length+' txs.')
       var regular_txids = []
       var colored_txids = []
