@@ -1459,6 +1459,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   var self = this
   var PARSED = 'PARSED'
   var transaction
+  logger.info('priority_parse: start', txid)
   async.waterfall([
     function (cb) {
       var conditions = {
@@ -1472,6 +1473,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       self.RawTransactions.findOne(conditions, projection).exec(cb)
     },
     function (tx, cb) {
+      logger.info('priority_parse: got transaction from bitcoind', txid)
       if (tx) return cb(PARSED)
       bitcoin_rpc.cmd('getrawtransaction', [txid, 1], function (err, raw_transaction_data) {
         if (err && err.code === -5) return cb(['tx ' + txid + ' not found.', 204])
@@ -1488,10 +1490,12 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       cb)
     },
     function (cb) {
+      logger.info('priority_parse: after priority_parse of all inputs', txid)
       self.mempool_cargo.unshift(txid, cb)
     }
   ],
   function (err) {
+    logger.info('priority_parse: end', txid)
     if (err) {
       if (err === PARSED) {
         process.send({to: properties.roles.API, priority_parsed: txid})
