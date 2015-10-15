@@ -50,7 +50,7 @@ module.exports = function (mongoose, properties) {
     output: Number,
     amountOfUnits: Number,
     range: Boolean,
-    precent: Boolean
+    percent: Boolean
   }, {_id: false })
 
   var ccdata = new mongoose.Schema({
@@ -80,9 +80,9 @@ module.exports = function (mongoose, properties) {
     totalsent: { type: Number, set: function (v) { return Math.round(v) } },
     blockhash: {type: String, index: true},
     time: {type: Number, index: true},
-    blocktime: Date,
+    blocktime: {type: Number, index: true},
     blockheight: {type: Number, index: true},
-    confirmations: Number,
+    confirmations: {type: Number, index: true},
     vin: [vin],
     vout: [vout],
     ccdata: [ccdata],
