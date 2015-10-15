@@ -1063,14 +1063,14 @@ var get_assets_outputs = function (raw_transaction) {
 }
 
 function isPaymentSimple (payment) {
-  return (!payment.range && !payment.precent)
+  return (!payment.range && !payment.percent)
 }
 
 function isPaymentRange (payment) {
   return payment.range
 }
 
-function isPaymentByPrecentage (payment) {
+function isPaymentByPercentage (payment) {
   return payment.range
 }
 
