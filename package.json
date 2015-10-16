@@ -1,6 +1,6 @@
 {
   "name": "cc-block-parser",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Parse the blockchain and build a Colored-Coins",
   "main": "scanner.js",
   "scripts": {
