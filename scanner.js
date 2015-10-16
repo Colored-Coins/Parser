@@ -1476,7 +1476,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   async.waterfall([
     function (cb) {
       if (self.priority_parse_list.indexOf(txid) != -1) {
-        end()
+        cb('in process of parsing')
       }
       self.priority_parse_list.push(txid)
       var conditions = {
@@ -1500,7 +1500,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
     function (raw_transaction_data, cb) {
       transaction = raw_transaction_data
       transaction = to_discrete(transaction)
-      if (!transaction || !transaction.vin) return end('txid ' + txid + ' not found')
+      if (!transaction || !transaction.vin) return cb('txid ' + txid + ' not found')
       async.each(transaction.vin, function (vin, cb2) {
         self.priority_parse(vin.txid, cb2)
       },
