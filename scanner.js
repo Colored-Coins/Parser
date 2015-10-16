@@ -946,8 +946,14 @@ var add_insert_update_to_bulk = function (raw_transaction_data, vins, utxos) {
   if (Object.keys(vins).length) {
     raw_transaction_data.tries = raw_transaction_data.tries || 0
     raw_transaction_data.tries++
+    console.log('add_insert_update_to_bulk: raw_transaction_data.tries', raw_transaction_data.tries)
     if (raw_transaction_data.tries > 1000) {
-      process.send({to: properties.roles.SCANNER, parse_priority: raw_transaction_data.txid})
+      var send_obj = {
+        to: properties.roles.SCANNER,
+        parse_priority: raw_transaction_data.txid
+      }
+      console.log('add_insert_update_to_bulk: send_obj', send_obj)
+      process.send(send_obj)
     }
     // logger.debug('another try: '+raw_transaction_data.tries++)
     // logger.debug('Object.keys(vins).length', Object.keys(vins).length)
