@@ -14,6 +14,7 @@ function Scanner (settings, db) {
   // console.log('Mongoose', db)
   debug = settings.debug
   this.to_revert = []
+  this.priority_parse_list = []
   properties = settings.properties
   this.next_hash = settings.next_hash
   this.last_hash = settings.last_hash
@@ -1466,8 +1467,18 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   var PARSED = 'PARSED'
   var transaction
   console.log('priority_parse: start', txid)
+  var end = function(err) {
+    if (self.priority_parse_list.indexOf(txid) != -1) {
+      self.priority_parse_list.splice(self.priority_parse_list.indexOf(txid), 1)
+    }
+    callback(err)
+  }
   async.waterfall([
     function (cb) {
+      if (self.priority_parse_list.indexOf(txid) != -1) {
+        end()
+      }
+      self.priority_parse_list.push(txid)
       var conditions = {
         txid: txid,
         iosparsed: true,
@@ -1489,7 +1500,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
     function (raw_transaction_data, cb) {
       transaction = raw_transaction_data
       transaction = to_discrete(transaction)
-      if (!transaction || !transaction.vin) return callback('txid ' + txid + ' not found')
+      if (!transaction || !transaction.vin) return end('txid ' + txid + ' not found')
       async.each(transaction.vin, function (vin, cb2) {
         self.priority_parse(vin.txid, cb2)
       },
@@ -1505,17 +1516,17 @@ Scanner.prototype.priority_parse = function (txid, callback) {
     if (err) {
       if (err === PARSED) {
         process.send({to: properties.roles.API, priority_parsed: txid})
-        return callback()
+        return end()
       }
       process.send({
         to: properties.roles.API,
         priority_parsed: txid,
         err: err
       })
-      return callback(err)
+      return end(err)
     }
     process.send({to: properties.roles.API, priority_parsed: txid})
-    callback()
+    end()
   })
 }
 
