@@ -848,7 +848,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
           vin.fixed = true
         } else {
           // var colored = true
-          if (vin.txid && vout in vin) {
+          if (vin.txid && 'vout' in vin) {
             conditions.push({
               txid: vin.txid,
               $or: [
