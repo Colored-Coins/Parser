@@ -738,7 +738,7 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
   var command_arr = []
   var txids_intersection = _.intersection(self.to_revert, raw_block_data.tx)
   self.to_revert = _.xor(txids_intersection, self.to_revert)
-   
+
   raw_block_data.tx.forEach(function (txhash) {
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
   })
@@ -1083,14 +1083,14 @@ var get_assets_outputs = function (raw_transaction) {
 }
 
 function isPaymentSimple (payment) {
-  return (!payment.range && !payment.precent)
+  return (!payment.range && !payment.percent)
 }
 
 function isPaymentRange (payment) {
   return payment.range
 }
 
-function isPaymentByPrecentage (payment) {
+function isPaymentByPercentage (payment) {
   return payment.range
 }
 
@@ -1289,8 +1289,6 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   })
 }
 
-
-
 Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   var self = this
 
@@ -1312,17 +1310,17 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   var command_arr = []
   txids = _.uniq(txids)
   var ph_index = txids.indexOf('PH')
-  if (ph_index != -1) {
+  if (ph_index !== -1) {
     txids.splice(ph_index, 1)
   }
-  logger.info('parsing mempool cargo ('+txids.length+')')
-  
+  console.log('parsing mempool cargo (' + txids.length + ')')
+
   txids.forEach(function (txhash) {
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
   })
   bitcoin_rpc.cmd(command_arr, function (raw_transaction_data, cb) {
     if (!raw_transaction_data) {
-      logger.info('Null transaction')
+      console.log('Null transaction')
       return cb()
     }
     raw_transaction_data = to_discrete(raw_transaction_data)
@@ -1346,7 +1344,7 @@ Scanner.prototype.revert_txids = function (callback) {
 
   self.to_revert = _.uniq(self.to_revert)
   if (!self.to_revert.length) return callback()
-  logger.info('need to revert '+self.to_revert.length+' txs from mempool.')
+  console.log('need to revert ' + self.to_revert.length + ' txs from mempool.')
   var n_batch = 5000
   async.whilst(function () { return self.to_revert.length },
     function (cb) {
@@ -1365,11 +1363,11 @@ Scanner.prototype.revert_txids = function (callback) {
 
       var txids = self.to_revert.slice(0, n_batch)
       console.log('reverting txs (' + txids.length + ',' + self.to_revert.length + ')')
-      
+
       // logger.debug('reverting '+block_data.tx.length+' txs.')
       var regular_txids = []
       var colored_txids = []
-       
+
       async.eachSeries(txids, function (txid, cb) {
         regular_txids.push(txid)
         self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, function (err, colored) {
@@ -1387,7 +1385,7 @@ Scanner.prototype.revert_txids = function (callback) {
           if (err) return cb(err)
           regular_txids.forEach(function (txid) {
             var index = self.to_revert.indexOf(txid)
-            if (index != -1) {
+            if (index !== -1) {
               self.to_revert.splice(index, 1)
             }
             self.emit('revertedtransaction', {txid: txid})
@@ -1438,23 +1436,23 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       bitcoin_rpc.cmd('getrawmempool', [], cb)
     },
     function (whole_txids, cb) {
-      whole_txids = whole_txids || []  
-      logger.info('parsing mempool txs (' + whole_txids.length + ')')
-    
+      whole_txids = whole_txids || []
+      console.log('parsing mempool txs (' + whole_txids.length + ')')
+
       var txids_intersection = _.intersection(db_parsed_txids, whole_txids) // txids that allready parsed in db
       new_txids = _.xor(txids_intersection, whole_txids) // txids that not parsed in db
       db_parsed_txids = _.xor(txids_intersection, db_parsed_txids) // the rest of the txids in the db (not yet found in mempool)
       txids_intersection = _.intersection(db_unparsed_txids, whole_txids) // txids that in mempool and db but not fully parsed
       db_unparsed_txids = _.xor(txids_intersection, db_unparsed_txids) // the rest of the txids in the db (not yet found in mempool, not fully parsed)
-      
+
       new_txids.push('PH')
-      logger.info('parsing new mempool txs (' + (new_txids.length - 1) + ')')
+      console.log('parsing new mempool txs (' + (new_txids.length - 1) + ')')
       cargo_size = new_txids.length
       self.mempool_cargo.push(new_txids, cb)
     },
     function (cb) {
       if (!--cargo_size) {
-        logger.info('finish parsing of', new_txids.length-1, 'mempool transactions.')
+        console.log('finish parsing of', new_txids.length - 1, 'mempool transactions.')
         var db_txids = db_parsed_txids.concat(db_unparsed_txids)
         self.to_revert = self.to_revert.concat(db_txids)
         cb()
@@ -1467,7 +1465,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   var self = this
   var PARSED = 'PARSED'
   var transaction
-  logger.info('priority_parse: start', txid)
+  console.log('priority_parse: start', txid)
   async.waterfall([
     function (cb) {
       var conditions = {
@@ -1481,7 +1479,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       self.RawTransactions.findOne(conditions, projection).exec(cb)
     },
     function (tx, cb) {
-      logger.info('priority_parse: got transaction from bitcoind', txid)
+      console.log('priority_parse: got transaction from bitcoind', txid)
       if (tx) return cb(PARSED)
       bitcoin_rpc.cmd('getrawtransaction', [txid, 1], function (err, raw_transaction_data) {
         if (err && err.code === -5) return cb(['tx ' + txid + ' not found.', 204])
@@ -1498,22 +1496,22 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       cb)
     },
     function (cb) {
-      logger.info('priority_parse: after priority_parse of all inputs', txid)
+      console.log('priority_parse: after priority_parse of all inputs', txid)
       self.mempool_cargo.unshift(txid, cb)
     }
   ],
   function (err) {
-    logger.info('priority_parse: end', txid)
+    console.log('priority_parse: end', txid)
     if (err) {
       if (err === PARSED) {
         process.send({to: properties.roles.API, priority_parsed: txid})
         return callback()
       }
       process.send({
-        to: properties.roles.API, 
-        priority_parsed: txid, 
+        to: properties.roles.API,
+        priority_parsed: txid,
         err: err
-      })    
+      })
       return callback(err)
     }
     process.send({to: properties.roles.API, priority_parsed: txid})

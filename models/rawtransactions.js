@@ -50,7 +50,7 @@ module.exports = function (mongoose, properties) {
     output: Number,
     amountOfUnits: Number,
     range: Boolean,
-    precent: Boolean
+    percent: Boolean
   }, {_id: false })
 
   var ccdata = new mongoose.Schema({
