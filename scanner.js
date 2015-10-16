@@ -1523,7 +1523,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
         priority_parsed: txid,
         err: err
       })
-      return end(err)
+      return callback(err)
     }
     process.send({to: properties.roles.API, priority_parsed: txid})
     end()
