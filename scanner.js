@@ -351,50 +351,39 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       emits.forEach(function (emit) {
         self.emit(emit[0], emit[1])
       })
-      if (empty) {
-        var bulk = self.Blocks.collection.initializeUnorderedBulkOp()
-        raw_block_datas.forEach(function (raw_block_data) {
-          bulk.find({hash: raw_block_data.hash}).updateOne({
-            $set: {
-              txsparsed: true,
-              ccparsed: false
-            }
-          })
+      if (!empty) return callback(err)
+      var bulk = self.Blocks.collection.initializeUnorderedBulkOp()
+      raw_block_datas.forEach(function (raw_block_data) {
+        bulk.find({hash: raw_block_data.hash}).updateOne({
+          $set: {
+            txsparsed: true,
+            ccparsed: false
+          }
         })
-        if (bulk.length) {
-          bulk.execute(callback)
-        } else {
-          callback(err)
-        }
-      } else {
-        callback(err)
-      }
+      })
+      if (!bulk.length) return callback(err)
+      bulk.execute(callback)
     }
 
     var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
     utxo_bulk.bulk_name = 'utxo_bulk'
-    var addresses_transactions_bulk = self.AddressesTransactions.collection.initializeUnorderedBulkOp()
-    addresses_transactions_bulk.bulk_name = 'addresses_transactions_bulk'
-    var addresses_utxos_bulk = self.AddressesUtxos.collection.initializeUnorderedBulkOp()
-    addresses_utxos_bulk.bulk_name = 'addresses_utxos_bulk'
     var raw_transaction_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
     raw_transaction_bulk.bulk_name = 'raw_transaction_bulk'
-    var assets_utxos_bulk = self.AssetsUtxos.collection.initializeUnorderedBulkOp()
-    assets_utxos_bulk.bulk_name = 'assets_utxos_bulk'
 
     self.get_need_to_fix_transactions_by_blocks(first_block, last_block, function (err, transactions_data) {
       if (err) return self.fix_blocks(err)
       console.log('Fixing blocks ' + first_block + '-' + last_block + ' (' + transactions_data.length + ' txs).')
         // var tx_to_fix_count = transactions_data.length
       // logger.debug('fixing '+tx_to_fix_count+' txs.')
-      if (!transactions_data || !transactions_data.length) {
+      if (!transactions_data) return callback('can\'t get transactions from db')
+      if (!transactions_data.length) {
         // logger.debug('no need to fix')
         if (debug) console.time('vin_insert_bulks')
         return close_blocks(null, true)
       }
       async.each(transactions_data, function (transaction_data, cb) {
         // logger.debug('fixing txid:', transaction_data.txid)
-        self.parse_vin(transaction_data, transaction_data.blockheight, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_utxos_bulk, function (err, coinbase, all_fixed) {
+        self.parse_vin(transaction_data, transaction_data.blockheight, utxo_bulk, function (err, coinbase, all_fixed) {
           if (err) return cb(err)
           raw_transaction_bulk.find({txid: transaction_data.txid}).updateOne({
             $set: {
@@ -414,7 +403,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       function (err) {
         if (err) return callback(err)
         if (debug) console.time('vin_insert_bulks')
-        execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, raw_transaction_bulk, assets_utxos_bulk], close_blocks)
+        execute_bulks_parallel([utxo_bulk, raw_transaction_bulk], close_blocks)
       })
     })
   })
@@ -454,31 +443,21 @@ Scanner.prototype.parse_cc = function (err, callback) {
       emits.forEach(function (emit) {
         self.emit(emit[0], emit[1])
       })
-      if (empty) {
-        var bulk = self.Blocks.collection.initializeUnorderedBulkOp()
-        raw_block_datas.forEach(function (raw_block_data) {
-          if (raw_block_data.txsparsed) {
-            self.emit('newblock', raw_block_data)
-            self.set_last_fully_parsed_block(raw_block_data.height)
-            // var conditions = {
-            //   hash: raw_block_data.hash
-            //   // txsparsed: true
-            // }
-            bulk.find({hash: raw_block_data.hash}).updateOne({
-              $set: {
-                ccparsed: true
-              }
-            })
-          }
-        })
-        if (bulk.length) {
-          bulk.execute(callback)
-        } else {
-          callback(err)
+      if (!empty) return callback(err)
+      var bulk = self.Blocks.collection.initializeUnorderedBulkOp()
+      raw_block_datas.forEach(function (raw_block_data) {
+        if (raw_block_data.txsparsed) {
+          self.emit('newblock', raw_block_data)
+          self.set_last_fully_parsed_block(raw_block_data.height)
+          bulk.find({hash: raw_block_data.hash}).updateOne({
+            $set: {
+              ccparsed: true
+            }
+          })
         }
-      } else {
-        callback(err)
-      }
+      })
+      if (!bulk.length) return callback(err)
+      bulk.execute(callback)
     }
 
     var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
@@ -497,7 +476,8 @@ Scanner.prototype.parse_cc = function (err, callback) {
       console.log('Parsing cc for blocks ' + first_block + '-' + last_block + ' (' + transactions_data.length + ' txs).')
         // var tx_to_fix_count = transactions_data.length
       // logger.debug('fixing '+tx_to_fix_count+' txs.')
-      if (!transactions_data || !transactions_data.length) {
+      if (!transactions_data) return callback('can\'t get transactions from db')
+      if (!transactions_data.length) {
         // logger.debug('no need to fix')
         if (debug) console.time('parse_cc_bulks')
         return close_blocks(null, true)
@@ -827,7 +807,7 @@ var to_discrete = function (raw_transaction_data) {
   return raw_transaction_data
 }
 
-Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_utxos_bulk, callback) {
+Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo_bulk, callback) {
   var self = this
   var coinbase = false
   var utxos
@@ -947,14 +927,14 @@ var add_insert_update_to_bulk = function (raw_transaction_data, vins, utxos) {
   if (Object.keys(vins).length) {
     raw_transaction_data.tries = raw_transaction_data.tries || 0
     raw_transaction_data.tries++
-    console.log('add_insert_update_to_bulk: raw_transaction_data.tries', raw_transaction_data.tries)
     if (raw_transaction_data.tries > 1000) {
-      var send_obj = {
-        to: properties.roles.SCANNER,
-        parse_priority: raw_transaction_data.txid
-      }
-      console.log('add_insert_update_to_bulk: send_obj', send_obj)
-      process.send(send_obj)
+      // var send_obj = {
+      //   to: properties.roles.SCANNER,
+      //   parse_priority: raw_transaction_data.txid
+      // }
+      // console.log('add_insert_update_to_bulk: send_obj', send_obj)
+      // process.send(send_obj)
+      console.error('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(vins), ') for over then 1000 tries.')
     }
     // logger.debug('another try: '+raw_transaction_data.tries++)
     // logger.debug('Object.keys(vins).length', Object.keys(vins).length)
@@ -1252,7 +1232,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       } else {
         // logger.debug('parsing tx vin: '+raw_transaction_data.txid)
         did_work = true
-        self.parse_vin(raw_transaction_data, -1, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_utxos_bulk, cb)
+        self.parse_vin(raw_transaction_data, -1, utxo_bulk, cb)
       }
     },
     function (coinbase, all_fixed, cb) {
@@ -1319,12 +1299,14 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   txids.forEach(function (txhash) {
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
   })
+  var tx_count = 0
   bitcoin_rpc.cmd(command_arr, function (raw_transaction_data, cb) {
     if (!raw_transaction_data) {
       console.log('Null transaction')
       return cb()
     }
     raw_transaction_data = to_discrete(raw_transaction_data)
+    console.log('parsing mempool cargo index', ++tx_count)
     self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, cb)
   },
   function (err) {
@@ -1336,6 +1318,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
         return callback(err)
       }
     }
+    console.log('parsing mempool bulks')
     execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_utxos_bulk, assets_transactions_bulk, assets_addresses_bulk, raw_transaction_bulk], callback)
   })
 }
@@ -1409,7 +1392,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   var db_unparsed_txids = []
   var new_txids
   var cargo_size
-
+  if (properties.scanner.mempool !== 'true') return callback()
   async.waterfall([
     self.revert_txids.bind(self),
     function (cb) {
@@ -1465,6 +1448,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
 Scanner.prototype.priority_parse = function (txid, callback) {
   var self = this
   var PARSED = 'PARSED'
+  var PROCESSING = 'PROCESSING'
   var transaction
   console.log('priority_parse: start', txid)
   var end = function(err) {
@@ -1476,7 +1460,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   async.waterfall([
     function (cb) {
       if (self.priority_parse_list.indexOf(txid) != -1) {
-        cb('in process of parsing')
+        cb(PROCESSING)
       }
       self.priority_parse_list.push(txid)
       var conditions = {
@@ -1500,7 +1484,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
     function (raw_transaction_data, cb) {
       transaction = raw_transaction_data
       transaction = to_discrete(transaction)
-      if (!transaction || !transaction.vin) return cb('txid ' + txid + ' not found')
+      if (!transaction || !transaction.vin) return cb(['tx ' + txid + ' not found.', 204])
       async.each(transaction.vin, function (vin, cb2) {
         self.priority_parse(vin.txid, cb2)
       },
@@ -1523,7 +1507,12 @@ Scanner.prototype.priority_parse = function (txid, callback) {
         priority_parsed: txid,
         err: err
       })
-      return callback(err)
+      if (err === PROCESSING) {
+        return callback('In the middle of processing.')
+      }
+      else {
+        return end(err)
+      }
     }
     process.send({to: properties.roles.API, priority_parsed: txid})
     end()
@@ -1558,7 +1547,6 @@ var execute_bulks = function (bulks, callback) {
 
 var execute_bulks_parallel = function (bulks, callback) {
   async.each(bulks, function (bulk, cb) {
-    // if (process.env.ROLE === 'scanner') logger.debug('Executing bulk with size '+bulk.length)
     var channel = 'bulk_' + bulk.bulk_name + '_length_' + bulk.length
     if (debug) console.time(channel)
     if (bulk.length) {
