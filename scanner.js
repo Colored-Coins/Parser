@@ -1299,7 +1299,9 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   txids.forEach(function (txhash) {
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
   })
+  console.log('command_arr', command_arr)
   var tx_count = 0
+  var tx_parsed_count = 0
   bitcoin_rpc.cmd(command_arr, function (raw_transaction_data, cb) {
     if (!raw_transaction_data) {
       console.log('Null transaction')
@@ -1307,7 +1309,10 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     }
     raw_transaction_data = to_discrete(raw_transaction_data)
     console.log('parsing mempool cargo index', ++tx_count)
-    self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, cb)
+    self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, function (err) {
+      console.log('parsing mempool cargo index end', ++tx_parsed_count)
+      cb(err)
+    })
   },
   function (err) {
     if (err) {
