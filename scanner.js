@@ -664,7 +664,7 @@ Scanner.prototype.get_next_new_block = function (callback) {
         self.set_last_hash(block_data.hash)
         callback(null, block_data.height + 1, block_data.hash)
       } else {
-        callback(null, 0)
+        callback(null, 0, null)
       }
     })
 }
