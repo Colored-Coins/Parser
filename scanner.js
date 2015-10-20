@@ -1447,6 +1447,38 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   ], callback)
 }
 
+Scanner.prototype.wait_for_parse = function (txid, callback) {
+  var self = this
+
+  var sent = 0
+  var end = function (err) {
+    if (!sent++) {
+      callback(err)
+    }
+  }
+
+  var listener = function (transaction) {
+    if (transaction.txid === txid) {
+      self.removeListener('newtransaction', listener)
+      end()
+    }
+  }
+  self.on('newtransaction', listener)
+
+  var conditions = {
+    txid: txid,
+    iosparsed: true,
+    $where: 'this.colored == this.ccparsed'
+  }
+  var projection = {
+    txid: 1
+  }
+  self.RawTransactions.findOne(conditions, projection).exec(function (err, transaction) {
+    if (err) return end(err)
+    if (transaction) end()
+  })
+}
+
 Scanner.prototype.priority_parse = function (txid, callback) {
   var self = this
   var PARSED = 'PARSED'
@@ -1462,7 +1494,10 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   async.waterfall([
     function (cb) {
       if (self.priority_parse_list.indexOf(txid) != -1) {
-        cb(PROCESSING)
+        return self.wait_for_parse(txid, function (err) {
+          if (err) return cb(err)
+          cb(PARSED)
+        })
       }
       self.priority_parse_list.push(txid)
       var conditions = {
