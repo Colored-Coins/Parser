@@ -55,7 +55,7 @@ function Scanner (settings, db) {
     })
   }
 
-  this.mempool_cargo = async.cargo(this.parse_mempool_cargo.bind(this), 1000)
+  this.mempool_cargo = async.cargo(this.parse_mempool_cargo.bind(this), 500)
 }
 
 util.inherits(Scanner, events.EventEmitter)
