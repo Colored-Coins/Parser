@@ -12,50 +12,54 @@ var debug
 
 function Scanner (settings, db) {
   // console.log('Mongoose', db)
+  var self = this
+
   debug = settings.debug
-  this.to_revert = []
-  this.priority_parse_list = []
+  self.to_revert = []
+  self.priority_parse_list = []
   properties = settings.properties
-  this.next_hash = settings.next_hash
-  this.last_hash = settings.last_hash
-  this.last_block = settings.last_block
-  this.last_fully_parsed_block = settings.last_fully_parsed_block
+  self.next_hash = settings.next_hash
+  self.last_hash = settings.last_hash
+  self.last_block = settings.last_block
+  self.last_fully_parsed_block = settings.last_fully_parsed_block
   bitcoin_rpc = new bitcoin.Client(settings.rpc_settings)
 
-  this.Blocks = db.model('blocks', require(__dirname + '/models/blocks')(db, properties))
-  this.RawTransactions = db.model('rawtransactions', require(__dirname + '/models/rawtransactions')(db, properties))
-  this.Utxo = db.model('utxo', require(__dirname + '/models/utxo')(db))
-  this.AddressesTransactions = db.model('addressestransactions', require(__dirname + '/models/addressestransactions')(db))
-  this.AddressesUtxos = db.model('addressesutxos', require(__dirname + '/models/addressesutxos')(db))
-  this.AssetsTransactions = db.model('assetstransactions', require(__dirname + '/models/assetstransactions')(db))
-  this.AssetsUtxos = db.model('assetsutxos', require(__dirname + '/models/assetsutxos')(db))
-  this.AssetsAddresses = db.model('assetsaddresses', require(__dirname + '/models/assetsaddresses')(db))
+  self.Blocks = db.model('blocks', require(__dirname + '/models/blocks')(db, properties))
+  self.RawTransactions = db.model('rawtransactions', require(__dirname + '/models/rawtransactions')(db, properties))
+  self.Utxo = db.model('utxo', require(__dirname + '/models/utxo')(db))
+  self.AddressesTransactions = db.model('addressestransactions', require(__dirname + '/models/addressestransactions')(db))
+  self.AddressesUtxos = db.model('addressesutxos', require(__dirname + '/models/addressesutxos')(db))
+  self.AssetsTransactions = db.model('assetstransactions', require(__dirname + '/models/assetstransactions')(db))
+  self.AssetsUtxos = db.model('assetsutxos', require(__dirname + '/models/assetsutxos')(db))
+  self.AssetsAddresses = db.model('assetsaddresses', require(__dirname + '/models/assetsaddresses')(db))
 
   if (process.env.ROLE === properties.roles.SCANNER) {
-    this.on('newblock', function (newblock) {
+    self.on('newblock', function (newblock) {
       process.send({to: properties.roles.API, newblock: newblock})
     })
-    this.on('newtransaction', function (newtransaction) {
+    self.on('newtransaction', function (newtransaction) {
       process.send({to: properties.roles.API, newtransaction: newtransaction})
     })
-    this.on('newcctransaction', function (newcctransaction) {
+    self.on('newcctransaction', function (newcctransaction) {
       process.send({to: properties.roles.API, newcctransaction: newcctransaction})
     })
-    this.on('revertedblock', function (revertedblock) {
+    self.on('revertedblock', function (revertedblock) {
       process.send({to: properties.roles.API, revertedblock: revertedblock})
     })
-    this.on('revertedtransaction', function (revertedtransaction) {
+    self.on('revertedtransaction', function (revertedtransaction) {
       process.send({to: properties.roles.API, revertedtransaction: revertedtransaction})
     })
-    this.on('revertedcctransaction', function (revertedcctransaction) {
+    self.on('revertedcctransaction', function (revertedcctransaction) {
       process.send({to: properties.roles.API, revertedcctransaction: revertedcctransaction})
     })
-    this.on('mempool', function () {
+    self.on('mempool', function () {
       process.send({to: properties.roles.API, mempool: true})
     })
   }
 
-  this.mempool_cargo = async.cargo(this.parse_mempool_cargo.bind(this), 500)
+  self.mempool_cargo = async.cargo(function () {
+    self.parse_mempool_cargo() 
+  }, 500)
 }
 
 util.inherits(Scanner, events.EventEmitter)
@@ -82,39 +86,32 @@ Scanner.prototype.scan_blocks = function (err) {
     function (raw_block_data, cb) {
       if (!cb) {
         cb = raw_block_data
+        raw_block_data = null
+      }
+      if (!raw_block_data || (raw_block_data.height === next_block - 1 && raw_block_data.hash === last_hash)) {
         if (debug) {
           job = 'mempool_scan'
           console.time(job)
         }
         self.parse_new_mempool(cb)
-      } else {
-        if (raw_block_data.height === next_block - 1 && raw_block_data.hash === last_hash) {
-          if (debug) {
-            job = 'mempool_scan'
-            console.time(job)
-          }
-          self.parse_new_mempool(cb)
-        } else if (!raw_block_data.previousblockhash || raw_block_data.previousblockhash === last_hash) {
-          // logger.debug('parsing block')
-          if (debug) {
-            job = 'parse_new_block'
-            console.time(job)
-          }
-          self.parse_new_block(raw_block_data, cb)
-        } else {
-          if (debug) {
-            job = 'reverting_block'
-            console.time(job)
-          }
-          self.revert_block(next_block - 1, cb)
+      } else if (!raw_block_data.previousblockhash || raw_block_data.previousblockhash === last_hash) {
+        // logger.debug('parsing block')
+        if (debug) {
+          job = 'parse_new_block'
+          console.time(job)
         }
+        self.parse_new_block(raw_block_data, cb)
+      } else {
+        if (debug) {
+          job = 'reverting_block'
+          console.time(job)
+        }
+        self.revert_block(next_block - 1, cb)
       }
     }
   ], function (err) {
     if (debug && job) console.timeEnd(job)
-      if (err) {
-        self.to_revert = []
-      }
+    if (err) self.to_revert = []
     self.scan_blocks(err)
   })
 }
