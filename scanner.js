@@ -116,6 +116,9 @@ Scanner.prototype.scan_blocks = function (err) {
     }
   ], function (err) {
     if (debug && job) console.timeEnd(job)
+      if (err) {
+        self.to_revert = []
+      }
     self.scan_blocks(err)
   })
 }
@@ -186,7 +189,7 @@ Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_
   var conditions = {
     txid: txid
   }
-  // logger.debug('reverting tx '+txid)
+  console.log('reverting tx '+txid)
   this.RawTransactions.findOne(conditions).exec(function (err, tx) {
     if (err) return callback(err)
     if (!tx) return callback()
@@ -717,10 +720,12 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
   console.log('parsing new block ' + raw_block_data.height)
 
   var command_arr = []
-  var txids_intersection = _.intersection(self.to_revert, raw_block_data.tx)
-  self.to_revert = _.xor(txids_intersection, self.to_revert)
 
   raw_block_data.tx.forEach(function (txhash) {
+    var index = self.to_revert.indexOf(txhash)
+    if (index != -1) {
+      self.to_revert.splice(index, 1)
+    }
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
   })
 
@@ -763,7 +768,7 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
       if (debug) console.timeEnd('vout_parse_bulks')
       if (err) return callback(err)
       raw_block_data.txinserted = true
-      // self.emit('newblock', raw_block_data) //TODO: add total sent && emit when finised
+      // self.emit('newblock', raw_block_data) //TODO: add total sent
       var blocks_bulk = self.Blocks.collection.initializeOrderedBulkOp()
       if (!properties.next_hash) {
         blocks_bulk.find({hash: raw_block_data.previousblockhash}).updateOne({$set: {nextblockhash: raw_block_data.hash}})
@@ -934,7 +939,7 @@ var add_insert_update_to_bulk = function (raw_transaction_data, vins, utxos) {
       // }
       // console.log('add_insert_update_to_bulk: send_obj', send_obj)
       // process.send(send_obj)
-      console.error('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(vins), ') for over then 1000 tries.')
+      console.warn('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(vins), ') for over then 1000 tries.')
     }
     // logger.debug('another try: '+raw_transaction_data.tries++)
     // logger.debug('Object.keys(vins).length', Object.keys(vins).length)
@@ -1354,14 +1359,24 @@ Scanner.prototype.revert_txids = function (callback) {
       var regular_txids = []
       var colored_txids = []
 
-      async.eachSeries(txids, function (txid, cb) {
-        regular_txids.push(txid)
-        self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, function (err, colored) {
-          if (err) return cb(err)
-          if (colored) {
-            colored_txids.push(txid)
+      async.each(txids, function (txid, cb) {
+        bitcoin_rpc.cmd('getrawtransaction', [txid], function (err, raw_transaction_data) {
+          if (err || !raw_transaction_data) {
+            regular_txids.push(txid)
+            self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, function (err, colored) {
+              if (err) return cb(err)
+              if (colored) {
+                colored_txids.push(txid)
+              }
+              cb()
+            })
           }
-          cb()
+          else {
+            if (self.to_revert.indexOf(txid) !== -1) {
+              self.to_revert.splice(self.to_revert.indexOf(txid), 1)
+            }
+            cb()
+          }
         })
       },
       function (err) {
