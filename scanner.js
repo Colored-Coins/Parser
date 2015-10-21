@@ -57,8 +57,8 @@ function Scanner (settings, db) {
     })
   }
 
-  self.mempool_cargo = async.cargo(function () {
-    self.parse_mempool_cargo() 
+  self.mempool_cargo = async.cargo(function (tasks, callback) {
+    self.parse_mempool_cargo(tasks, callback)
   }, 500)
 }
 
