@@ -89,11 +89,13 @@ Scanner.prototype.scan_blocks = function (err) {
         raw_block_data = null
       }
       if (!raw_block_data || (raw_block_data.height === next_block - 1 && raw_block_data.hash === last_hash)) {
-        if (debug) {
-          job = 'mempool_scan'
-          console.time(job)
-        }
-        self.parse_new_mempool(cb)
+        setTimeout(function () {
+          if (debug) {
+            job = 'mempool_scan'
+            console.time(job)
+          }
+          self.parse_new_mempool(cb)
+        }, 500)
       } else if (!raw_block_data.previousblockhash || raw_block_data.previousblockhash === last_hash) {
         // logger.debug('parsing block')
         if (debug) {
@@ -681,6 +683,7 @@ Scanner.prototype.get_next_new_block = function (callback) {
 
 Scanner.prototype.get_raw_block = function (block_height, callback) {
   var self = this
+  console.log('get_raw_block')
   bitcoin_rpc.cmd('getblockhash', [block_height], function (err, hash) {
     if (err) {
       if ('code' in err && err.code === -8) {
