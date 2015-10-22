@@ -1527,8 +1527,10 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     function (cb) {
       if (!--cargo_size || (!self.mempool_cargo.length() && !finnished++)) {
         console.log('finish parsing of', new_txids.length - 1, 'mempool transactions.')
-        var db_txids = db_parsed_txids.concat(db_unparsed_txids)
-        self.to_revert = self.to_revert.concat(db_txids)
+        if (!finnished) {
+          var db_txids = db_parsed_txids.concat(db_unparsed_txids)
+          self.to_revert = self.to_revert.concat(db_txids)
+        }
         cb()
       }
     }
