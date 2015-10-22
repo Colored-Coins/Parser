@@ -68,6 +68,9 @@ Scanner.prototype.scan_blocks = function (err) {
   var self = this
   if (err) {
     console.error(err)
+
+
+
     return self.scan_blocks()
   }
   var job
@@ -1382,6 +1385,7 @@ Scanner.prototype.revert_txids = function (callback) {
             })
           }
           else {
+            console.log('found tx that do not need to revert', txid)
             if (self.to_revert.indexOf(txid) !== -1) {
               self.to_revert.splice(self.to_revert.indexOf(txid), 1)
             }
@@ -1422,9 +1426,14 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   if (properties.scanner.mempool !== 'true') return callback()
   console.log('start reverting (if needed)')
   async.waterfall([
-    self.revert_txids.bind(self),
+    function (cb) {
+      self.revert_txids(cb)  
+    },
     function (cb) {
       console.log('end reverting (if needed)')
+      setTimeout(cb, 10000)
+    },
+    function (cb) {
       self.emit('mempool')
       var conditions = {
         blockheight: -1
@@ -1440,6 +1449,11 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     },
     function (transactions, cb) {
       console.log('end find mempool db txs')
+      setTimeout(function () {
+        cb(null, transactions)
+      }, 10000)
+    },
+    function (transactions, cb) {
       transactions.forEach(function (transaction) {
         if (transaction.iosparsed && transaction.colored == transaction.ccparsed) {
           db_parsed_txids.push(transaction.txid)
@@ -1454,6 +1468,11 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     function (whole_txids, cb) {
       whole_txids = whole_txids || []
       console.log('end find mempool bitcoind txs')
+      setTimeout (function () {
+        cb(null, whole_txids)
+      }, 10000)
+    },
+    function (whole_txids, cb) {
       console.log('parsing mempool txs (' + whole_txids.length + ')')
       console.log('start xoring')
       var txids_intersection = _.intersection(db_parsed_txids, whole_txids) // txids that allready parsed in db
@@ -1462,6 +1481,9 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       txids_intersection = _.intersection(db_unparsed_txids, whole_txids) // txids that in mempool and db but not fully parsed
       db_unparsed_txids = _.xor(txids_intersection, db_unparsed_txids) // the rest of the txids in the db (not yet found in mempool, not fully parsed)
       console.log('end xoring')
+      setTimeout(cb, 10000)
+    },
+    function (cb) {
       new_txids.push('PH')
       console.log('parsing new mempool txs (' + (new_txids.length - 1) + ')')
       cargo_size = new_txids.length
@@ -1472,7 +1494,8 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         console.log('finish parsing of', new_txids.length - 1, 'mempool transactions.')
         var db_txids = db_parsed_txids.concat(db_unparsed_txids)
         self.to_revert = self.to_revert.concat(db_txids)
-        cb()
+        // cb()
+        setTimeout(cb, 10000)
       }
     }
   ], callback)
