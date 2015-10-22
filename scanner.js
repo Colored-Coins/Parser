@@ -1379,6 +1379,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       if (err) {
         self.to_revert = []
         console.log('killing in the name of!')
+        console.error('execute cargo bulk error ', err)
         self.mempool_cargo.kill()
       }
       callback()
