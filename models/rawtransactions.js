@@ -123,6 +123,7 @@ module.exports = function (mongoose, properties) {
   })
 
   var calc_fee = function (doc) {
+    if (doc.totalsent) return
     var fee = 0
     var totalsent = 0
     var coinbase = false
@@ -131,12 +132,12 @@ module.exports = function (mongoose, properties) {
         if ('coinbase' in vin && vin.coinbase) {
           coinbase = true
         }
-        if ('value' in vin && vin.value) {
+        if (vin.value) {
           fee += vin.value
         }
       })
     }
-    if ('vout' in doc && doc.vout) {
+    if (doc.vout) {
       doc.vout.forEach(function (vout) {
         if ('value' in vout && vout.value) {
           fee -= vout.value

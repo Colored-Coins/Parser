@@ -390,7 +390,10 @@ Scanner.prototype.fix_blocks = function (err, callback) {
             $set: {
               iosparsed: all_fixed,
               vin: transaction_data.toObject().vin,
-              tries: transaction_data.tries || 0
+              tries: transaction_data.tries || 0,
+              fee: transaction_data.fee,
+              totalsent: transaction_data.totalsent
+
             }
           })
           // transaction_data.save(cb)
@@ -818,12 +821,35 @@ var to_discrete = function (raw_transaction_data) {
     if (vout.value) {
       vout.value *= 100000000
     }
-    if (vout.fee) {
-      vout.fee *= 100000000
-    }
   })
   return raw_transaction_data
 }
+
+var calc_fee = function (raw_transaction_data) {
+    var fee = 0
+    var totalsent = 0
+    var coinbase = false
+    if ('vin' in raw_transaction_data && raw_transaction_data.vin) {
+      raw_transaction_data.vin.forEach(function (vin) {
+        if ('coinbase' in vin && vin.coinbase) {
+          coinbase = true
+        }
+        if (vin.value) {
+          fee += vin.value
+        }
+      })
+    }
+    if (raw_transaction_data.vout) {
+      raw_transaction_data.vout.forEach(function (vout) {
+        if ('value' in vout && vout.value) {
+          fee -= vout.value
+          totalsent += vout.value
+        }
+      })
+    }
+    raw_transaction_data.totalsent = totalsent
+    raw_transaction_data.fee = coinbase ? 0 : fee
+  }
 
 Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo_bulk, callback) {
   var self = this
@@ -916,6 +942,9 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
     add_insert_update_to_bulk(raw_transaction_data, vins, utxos)
     add_remove_to_bulk(utxos, utxo_bulk, block_height, raw_transaction_data.txid)
     var all_fixed = (Object.keys(vins).length === 0)
+    if (all_fixed) {
+      calc_fee(raw_transaction_data)
+    }
     callback(null, coinbase, all_fixed)
   })
 }
@@ -1191,11 +1220,13 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
   }
   if (raw_transaction_data.blocktime) {
     raw_transaction_data.blocktime = raw_transaction_data.blocktime * 1000
-    raw_transaction_data.blockheight = block_height
   } else {
-    raw_transaction_data.blockheight = -1
     raw_transaction_data.blocktime = Date.now()
+    if (block_height != -1) {
+      console.log('yoorika!')
+    } 
   }
+  raw_transaction_data.blockheight = block_height
   raw_transaction_data.tries = 0
 
   var conditions = {
@@ -1222,6 +1253,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   var self = this
   var transaction_data
   var did_work = false
+  var blockheight = -1
   // var parsing_vin = false
   var emits = []
   var conditions = {
@@ -1229,18 +1261,22 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   }
   async.waterfall([
     function (cb) {
-      if (raw_transaction_data.from_db) return cb(null, raw_transaction_data)
+      // if (raw_transaction_data.from_db) return cb(null, raw_transaction_data)
       self.RawTransactions.findOne(conditions, cb)
     },
     function (l_transaction_data, cb) {
       transaction_data = l_transaction_data
       if (transaction_data) {
         raw_transaction_data = transaction_data.toObject()
+        blockheight = raw_transaction_data.blockheight || -1
         cb(null, 0)
       } else {
         // logger.debug('parsing new tx: '+raw_transaction_data.txid)
         did_work = true
-        var out = self.parse_new_transaction(raw_transaction_data, -1, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
+        if (blockheight == -1 && raw_transaction_data.blockhash) {
+          console.warn('tx is parsing as mempool but in block!', raw_transaction_data.txid)
+        }
+        var out = self.parse_new_transaction(raw_transaction_data, blockheight, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
         cb(null, out)
       }
     },
@@ -1250,7 +1286,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       } else {
         // logger.debug('parsing tx vin: '+raw_transaction_data.txid)
         did_work = true
-        self.parse_vin(raw_transaction_data, -1, utxo_bulk, cb)
+        self.parse_vin(raw_transaction_data, blockheight, utxo_bulk, cb)
       }
     },
     function (coinbase, all_fixed, cb) {
@@ -1374,7 +1410,7 @@ Scanner.prototype.revert_txids = function (callback) {
 
       async.each(txids, function (txid, cb) {
         bitcoin_rpc.cmd('getrawtransaction', [txid], function (err, raw_transaction_data) {
-          if (err || !raw_transaction_data) {
+          if (err || !raw_transaction_data || !raw_transaction_data.confirmations) {
             regular_txids.push(txid)
             self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, function (err, colored) {
               if (err) return cb(err)
@@ -1389,6 +1425,12 @@ Scanner.prototype.revert_txids = function (callback) {
             if (self.to_revert.indexOf(txid) !== -1) {
               self.to_revert.splice(self.to_revert.indexOf(txid), 1)
             }
+            // No need for now....
+            // if blockhash
+            // get blockheight
+            // parse tx (first parse)
+            // if not iosfixed - set block as not fixed
+            // if colored and not cc_parsed - set block as not cc_parsed
             cb()
           }
         })
@@ -1431,9 +1473,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     },
     function (cb) {
       console.log('end reverting (if needed)')
-      setTimeout(cb, 10000)
-    },
-    function (cb) {
       self.emit('mempool')
       var conditions = {
         blockheight: -1
@@ -1449,11 +1488,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     },
     function (transactions, cb) {
       console.log('end find mempool db txs')
-      setTimeout(function () {
-        cb(null, transactions)
-      }, 10000)
-    },
-    function (transactions, cb) {
       transactions.forEach(function (transaction) {
         if (transaction.iosparsed && transaction.colored == transaction.ccparsed) {
           db_parsed_txids.push(transaction.txid)
@@ -1468,11 +1502,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     function (whole_txids, cb) {
       whole_txids = whole_txids || []
       console.log('end find mempool bitcoind txs')
-      setTimeout (function () {
-        cb(null, whole_txids)
-      }, 10000)
-    },
-    function (whole_txids, cb) {
       console.log('parsing mempool txs (' + whole_txids.length + ')')
       console.log('start xoring')
       var txids_intersection = _.intersection(db_parsed_txids, whole_txids) // txids that allready parsed in db
@@ -1481,9 +1510,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       txids_intersection = _.intersection(db_unparsed_txids, whole_txids) // txids that in mempool and db but not fully parsed
       db_unparsed_txids = _.xor(txids_intersection, db_unparsed_txids) // the rest of the txids in the db (not yet found in mempool, not fully parsed)
       console.log('end xoring')
-      setTimeout(cb, 10000)
-    },
-    function (cb) {
       new_txids.push('PH')
       console.log('parsing new mempool txs (' + (new_txids.length - 1) + ')')
       cargo_size = new_txids.length
@@ -1494,8 +1520,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         console.log('finish parsing of', new_txids.length - 1, 'mempool transactions.')
         var db_txids = db_parsed_txids.concat(db_unparsed_txids)
         self.to_revert = self.to_revert.concat(db_txids)
-        // cb()
-        setTimeout(cb, 10000)
+        cb()
       }
     }
   ], callback)
