@@ -1393,9 +1393,9 @@ Scanner.prototype.revert_txids = function (callback) {
   self.to_revert = _.uniq(self.to_revert)
   if (!self.to_revert.length) return callback()
   console.log('need to revert ' + self.to_revert.length + ' txs from mempool.')
-  var n_batch = 5000
-  async.whilst(function () { return self.to_revert.length },
-    function (cb) {
+  var n_batch = 1000
+  // async.whilst(function () { return self.to_revert.length },
+    // function (cb) {
       var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
       utxo_bulk.bulk_name = 'utxo_bulk'
       var raw_transaction_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
@@ -1458,12 +1458,13 @@ Scanner.prototype.revert_txids = function (callback) {
           colored_txids.forEach(function (txid) {
             self.emit('revertedcctransaction', {txid: txid})
           })
-          cb()
+          // cb()
+          callback()
         })
       })
-    },
-    callback
-  )
+  //   },
+  //   callback
+  // )
 }
 
 Scanner.prototype.parse_new_mempool = function (callback) {
