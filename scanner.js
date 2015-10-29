@@ -1393,7 +1393,7 @@ Scanner.prototype.revert_txids = function (callback) {
   self.to_revert = _.uniq(self.to_revert)
   if (!self.to_revert.length) return callback()
   console.log('need to revert ' + self.to_revert.length + ' txs from mempool.')
-  var n_batch = 1000
+  var n_batch = 100
   // async.whilst(function () { return self.to_revert.length },
     // function (cb) {
       var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
