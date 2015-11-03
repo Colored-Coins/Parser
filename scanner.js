@@ -1381,6 +1381,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
         console.log('killing in the name of!')
         console.error('execute cargo bulk error ', err)
         self.mempool_cargo.kill()
+        self.emit('kill')
       }
       callback()
     })
@@ -1474,7 +1475,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   var db_unparsed_txids = []
   var new_txids
   var cargo_size
-  var finnished = 0
+
   if (properties.scanner.mempool !== 'true') return callback()
   console.log('start reverting (if needed)')
   async.waterfall([
@@ -1523,17 +1524,22 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       new_txids.push('PH')
       console.log('parsing new mempool txs (' + (new_txids.length - 1) + ')')
       cargo_size = new_txids.length
-      self.mempool_cargo.push(new_txids, cb)
-    },
-    function (cb) {
-      if (!--cargo_size || (!self.mempool_cargo.length() && !finnished++)) {
-        console.log('finish parsing of', new_txids.length - 1, 'mempool transactions.')
-        if (!finnished) {
+      var ended = 0
+      var end_func = function() {
+        if (!ended++) {
+          self.removeListener('kill', end_func)
+          console.log('mempool cargo ended.')
+          cb()
+        }
+      }
+      self.once('kill', end_func)
+      self.mempool_cargo.push(new_txids, function () {
+        if (!--cargo_size) {
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
           self.to_revert = self.to_revert.concat(db_txids)
+          end_func()
         }
-        cb()
-      }
+      })
     }
   ], callback)
 }
