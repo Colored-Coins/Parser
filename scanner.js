@@ -1475,6 +1475,9 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   var db_unparsed_txids = []
   var new_txids
   var cargo_size
+  var limit = 100000
+  var has_next = true
+  var skip = 0
 
   if (properties.scanner.mempool !== 'true') return callback()
   console.log('start reverting (if needed)')
@@ -1495,18 +1498,33 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         ccparsed: 1
       }
       console.log('start find mempool db txs')
-      self.RawTransactions.find(conditions, projection, cb)
+      async.whilst(function () { return has_next },
+        function (cb) {
+          self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}, function (err, transactions) {
+            if (err) return cb(err)
+            transactions.forEach(function (transaction) {
+              if (transaction.iosparsed && transaction.colored == transaction.ccparsed) {
+                db_parsed_txids.push(transaction.txid)
+              }
+              else {
+                db_unparsed_txids.push(transaction.txid)
+              }
+            })
+            if (transactions.length === limit) {
+              console.log('got txs', skip + 1, '-', skip + limit)
+              skip+=limit
+            }
+            else {
+              has_next = false
+            }
+            cb()
+          })
+        },
+      cb)
     },
-    function (transactions, cb) {
+    function (cb) {
       console.log('end find mempool db txs')
-      transactions.forEach(function (transaction) {
-        if (transaction.iosparsed && transaction.colored == transaction.ccparsed) {
-          db_parsed_txids.push(transaction.txid)
-        }
-        else {
-          db_unparsed_txids.push(transaction.txid)
-        }
-      })
+      
       console.log('start find mempool bitcoind txs')
       bitcoin_rpc.cmd('getrawmempool', [], cb)
     },
