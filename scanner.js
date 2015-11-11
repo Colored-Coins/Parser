@@ -1236,15 +1236,19 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
   var out = self.parse_vout(raw_transaction_data, block_height, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
   raw_transaction_data.iosparsed = false
   raw_transaction_data.ccparsed = false
-
+  var update = {
+    blocktime: raw_transaction_data.blocktime,
+    blockheight: raw_transaction_data.blockheight,
+    blockhash: raw_transaction_data.blockhash,
+    time: raw_transaction_data.time
+  }
+  delete raw_transaction_data.blocktime
+  delete raw_transaction_data.blockheight
+  delete raw_transaction_data.blockhash
+  delete raw_transaction_data.time
   raw_transaction_bulk.find(conditions).upsert().updateOne({
-    $setOnInsert: raw_transaction_data
-    $set: {
-      blocktime: raw_transaction_data.blocktime,
-      blockheight: raw_transaction_data.blockheight,
-      blockhash: raw_transaction_data.blockhash,
-      time: raw_transaction_data.time
-    }
+    $setOnInsert: raw_transaction_data,
+    $set: update
   })
 
   return out
