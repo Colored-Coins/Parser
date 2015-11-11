@@ -1227,7 +1227,7 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
     } 
   }
   raw_transaction_data.blockheight = block_height
-  raw_transaction_data.tries = 0
+  // raw_transaction_data.tries = 0
 
   var conditions = {
     txid: raw_transaction_data.txid
@@ -1274,18 +1274,31 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       if (transaction_data) {
         raw_transaction_data = transaction_data.toObject()
         blockheight = raw_transaction_data.blockheight || -1
-        cb(null, 0)
+        cb()
       } else {
         // logger.debug('parsing new tx: '+raw_transaction_data.txid)
         did_work = true
         if (blockheight == -1 && raw_transaction_data.blockhash) {
           console.warn('tx is parsing as mempool but in block!', raw_transaction_data.txid)
         }
-        var out = self.parse_new_transaction(raw_transaction_data, blockheight, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
-        cb(null, out)
+        if (raw_transaction_data.time) {
+          raw_transaction_data.time = raw_transaction_data.time * 1000
+        }
+        if (raw_transaction_data.blocktime) {
+          raw_transaction_data.blocktime = raw_transaction_data.blocktime * 1000
+        } else {
+          raw_transaction_data.blocktime = Date.now()
+        }
+        raw_transaction_data.blockheight = blockheight
+        // raw_transaction_data.tries = 0
+
+        var out = self.parse_vout(raw_transaction_data, block_height, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
+        raw_transaction_data.iosparsed = false
+        raw_transaction_data.ccparsed = false
+        cb()
       }
     },
-    function (out, cb) {
+    function (cb) {
       if (raw_transaction_data.iosparsed) {
         cb(null, null, true)
       } else {
