@@ -1233,7 +1233,9 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
     txid: raw_transaction_data.txid
   }
 
-  raw_transaction_data.iosparsed = false
+  raw_transaction_data['$setOnInsert'] = {
+    iosparsed: false
+  }
   var out = self.parse_vout(raw_transaction_data, block_height, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
   raw_transaction_bulk.find(conditions).upsert().updateOne(raw_transaction_data)
   return out
