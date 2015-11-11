@@ -1133,7 +1133,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utx
   if (!raw_transaction_data.vout) return 0
   // var assets
   raw_transaction_data.colored = false
-  raw_transaction_data.ccparsed = false
+  // raw_transaction_data.ccparsed = false
   var addresses_transactions_in_bulks = []
   var addresses_utxos_in_bulks = []
   raw_transaction_data.vout.forEach(function (vout) {
@@ -1157,7 +1157,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utx
           raw_transaction_data.ccdata = raw_transaction_data.ccdata || []
           raw_transaction_data.ccdata.push(cc)
           raw_transaction_data.colored = true
-          raw_transaction_data.ccparsed = false
+          // raw_transaction_data.ccparsed = false
         }
       }
     }
@@ -1233,11 +1233,14 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
     txid: raw_transaction_data.txid
   }
 
-  raw_transaction_data['$setOnInsert'] = {
-    iosparsed: false
-  }
   var out = self.parse_vout(raw_transaction_data, block_height, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
-  raw_transaction_bulk.find(conditions).upsert().updateOne(raw_transaction_data)
+  raw_transaction_bulk.find(conditions).upsert().updateOne({
+    $set: raw_transaction_data,
+    $setOnInsert = {
+      iosparsed: false,
+      ccparsed: false
+    }
+  })
   return out
 }
 
