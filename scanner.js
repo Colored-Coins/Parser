@@ -1292,7 +1292,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         raw_transaction_data.blockheight = blockheight
         // raw_transaction_data.tries = 0
 
-        var out = self.parse_vout(raw_transaction_data, block_height, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
+        var out = self.parse_vout(raw_transaction_data, blockheight, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
         raw_transaction_data.iosparsed = false
         raw_transaction_data.ccparsed = false
         cb()
