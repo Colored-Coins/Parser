@@ -1236,7 +1236,7 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
   var out = self.parse_vout(raw_transaction_data, block_height, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
   raw_transaction_bulk.find(conditions).upsert().updateOne({
     $set: raw_transaction_data,
-    $setOnInsert = {
+    $setOnInsert: {
       iosparsed: false,
       ccparsed: false
     }
