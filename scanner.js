@@ -1163,17 +1163,19 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utx
     }
     out += vout.value
     var utxo = {
+      blocktime: raw_transaction_data.blocktime,
+      blockheight: block_height
+    }
+    var new_utxo = {
       txid: raw_transaction_data.txid,
       index: vout.n,
       value: vout.value,
-      used: false,
-      blockheight: block_height,
-      blocktime: raw_transaction_data.blocktime
+      used: false
     }
     if ('scriptPubKey' in vout && 'addresses' in vout.scriptPubKey) {
-      utxo.scriptPubKey = vout.scriptPubKey
+      new_utxo.scriptPubKey = vout.scriptPubKey
       var tx_pushed = false
-      utxo.scriptPubKey.addresses.forEach(function (address) {
+      new_utxo.scriptPubKey.addresses.forEach(function (address) {
         if (!tx_pushed) {
           var address_tx = {
             address: address,
@@ -1187,7 +1189,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utx
         }
         var address_utxo = {
           address: address,
-          utxo: utxo.txid + ':' + utxo.index
+          utxo: new_utxo.txid + ':' + new_utxo.index
         }
         if (addresses_utxos_in_bulks.indexOf(address_utxo) === -1) {
           addresses_utxos_bulk.find(address_utxo).upsert().updateOne(address_utxo)
@@ -1196,10 +1198,13 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utx
       })
     }
     var conditions = {
-      txid: utxo.txid,
-      index: utxo.index
+      txid: new_utxo.txid,
+      index: new_utxo.index
     }
-    utxo_bulk.find(conditions).upsert().updateOne(utxo)
+    utxo_bulk.find(conditions).upsert().updateOne({
+      $set: utxo,
+      $setOnInsert: new_utxo
+    })
   })
   return out
 }
