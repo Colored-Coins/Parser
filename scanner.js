@@ -3,8 +3,8 @@ var util = require('util')
 var events = require('events')
 var _ = require('lodash')
 var CCTransaction = require('cc-transaction')
-var assetIdencoder = require('cc-assetid-encoder')
 var bitcoin = require('bitcoin-async')
+var get_assets_outputs = require('cc-get-assets-outputs')
 
 var properties
 var bitcoin_rpc
@@ -68,9 +68,6 @@ Scanner.prototype.scan_blocks = function (err) {
   var self = this
   if (err) {
     console.error(err)
-
-
-
     return self.scan_blocks()
   }
   var job
@@ -187,7 +184,7 @@ Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_
   var conditions = {
     txid: txid
   }
-  console.log('reverting tx '+txid)
+  console.log('reverting tx ' + txid)
   this.RawTransactions.findOne(conditions).exec(function (err, tx) {
     if (err) return callback(err)
     if (!tx) return callback()
@@ -450,8 +447,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
       if (!empty) {
         if (did_work) {
           return callback(err)
-        }
-        else {
+        } else {
           return setTimeout(function () {
             callback()
           }, 500)
@@ -739,7 +735,7 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
 
   raw_block_data.tx.forEach(function (txhash) {
     var index = self.to_revert.indexOf(txhash)
-    if (index != -1) {
+    if (index !== -1) {
       self.to_revert.splice(index, 1)
     }
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
@@ -1003,129 +999,6 @@ var add_remove_to_bulk = function (utxos, utxos_bulk, block_height, txid) {
   return is_utxos_bulk
 }
 
-var get_assets_outputs = function (raw_transaction) {
-  var transaction_data = JSON.parse(JSON.stringify(raw_transaction))
-  var ccdata = transaction_data.ccdata[0]
-  var assets = []
-  // var issuedassetid = null
-  /*var encodeItem = { assetid: 0, iputindex: 0, amountleft: 0 }*/
-  // is it an issuece
-  var empty_issuance = ccdata.type === 'issuance' && !ccdata.amount
-  if (ccdata.type === 'issuance') {
-    // logger.debug('issuance!')
-    var opts = {
-      'cc_data': [{
-        type: 'issuance',
-        lockStatus: ccdata.lockStatus,
-        divisibility: ccdata.divisibility
-      }],
-      'vin': [{'txid': transaction_data.vin[0].txid, 'vout': transaction_data.vin[0].vout }]
-    }
-    if (!opts.cc_data[0].lockStatus) {
-      opts.vin[0].address = transaction_data.vin[0].previousOutput.addresses[0]
-    }
-    transaction_data.vin[0].assets = transaction_data.vin[0].assets || []
-    transaction_data.vin[0].assets.unshift({
-      assetId: assetIdencoder(opts),
-      amount: ccdata.amount,
-      issueTxid: transaction_data.txid,
-      divisibility: ccdata.divisibility,
-      lockStatus: ccdata.lockStatus && ccdata.noRules
-    })
-    // console.log(transaction_data.vin[0].assets)
-  }
-
-  var paymentIndex = 0
-  transaction_data.vin.forEach(function (prevOutput, currentIndex) {
-    var overflow = 0
-    prevOutput.assets = prevOutput.assets || []
-    prevOutput.assets.forEach(function (asset, assetIndex) {
-      var currentAmount = 0
-      var currentPayment = {}
-
-      // console.log(paymentIndex + " < " + ccdata.payments.length + " "  )
-      for (var i = paymentIndex;
-        i < ccdata.payments.length
-        && (currentAmount <= asset.amount)
-        && ccdata.payments[i].input === currentIndex; paymentIndex++, i++) {
-        currentPayment = ccdata.payments[i]
-        var actualAmount = overflow ? overflow : currentPayment.amountOfUnits
-        overflow = 0
-        // console.log("checking for asset with amount at: " + currentPayment.output + "  " + currentPayment.amountOfUnits)
-        if (isPaymentSimple(currentPayment)) {
-          // console.log("paymet is simple")
-          if (isInOutputsScope(currentPayment.output, transaction_data.vout)) {
-            // console.log("output in scope")
-            if (!assets[currentPayment.output]) assets[currentPayment.output] = []
-            // console.log("found and asset with amount at: " + currentPayment.output + "  " +actualAmount)
-
-            // console.log(ccdata.payments)
-            assets[currentPayment.output].push({
-              assetId: asset.assetId,
-              amount: (actualAmount + currentAmount > asset.amount) ? (asset.amount - currentAmount) : actualAmount,
-              issueTxid: asset.issueTxid,
-              divisibility: asset.divisibility,
-              lockStatus: asset.lockStatus
-            })
-            currentAmount += actualAmount
-          }
-        } else if (isPaymentRange(currentPayment)) {
-          // currentPayment.output
-        }
-      }
-      // check leftovers and throw them to the last aoutput
-      if (currentAmount < asset.amount) {
-        // console.log("found change ")
-        if (isPaymentSimple(currentPayment)) {
-           // if we already encoded the last output then just set the correct amount
-          var prev = assets[transaction_data.vout.length - 1] ? assets[transaction_data.vout.length - 1].length - 1 : false
-          if (prev && assets[transaction_data.vout.length - 1][prev].assetId === asset.assetId) {
-            assets[transaction_data.vout.length - 1][prev].amount = asset.amount
-          } else if (!assets[transaction_data.vout.length - 1]) { // put chnage in last output
-            assets[transaction_data.vout.length - 1] = []
-          }
-          assets[transaction_data.vout.length - 1].push({
-            assetId: asset.assetId,
-            amount: asset.amount - currentAmount,
-            issueTxid: asset.issueTxid,
-            divisibility: asset.divisibility,
-            lockStatus: asset.lockStatus
-          })
-        }
-      }
-   // set overflow so we take the next asset if we need to
-      if (currentAmount > asset.amount) {
-        overflow = currentAmount - asset.amount
-        paymentIndex--
-      }
-      else overflow = 0
-    })
-    if (overflow) {
-      raw_transaction.overflow = true
-    }
-  }) // prev_outputs.forEach
-  assets = assets.map(function (output_assets) {
-    return output_assets.filter(function (asset) { return asset.amount > 0 || empty_issuance})
-  })
-  return assets
-}
-
-function isPaymentSimple (payment) {
-  return (!payment.range && !payment.percent)
-}
-
-function isPaymentRange (payment) {
-  return payment.range
-}
-
-function isPaymentByPercentage (payment) {
-  return payment.range
-}
-
-function isInOutputsScope (i, vout) {
-  return i <= vout.length - 1
-}
-
 Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk) {
   // var self = this
   var out = 0
@@ -1227,9 +1100,7 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
     raw_transaction_data.blocktime = raw_transaction_data.blocktime * 1000
   } else {
     raw_transaction_data.blocktime = Date.now()
-    if (block_height != -1) {
-      console.log('yoorika!')
-    } 
+    if (block_height !== -1) console.log('yoorika!')
   }
   raw_transaction_data.blockheight = block_height
   // raw_transaction_data.tries = 0
@@ -1293,7 +1164,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       } else {
         // logger.debug('parsing new tx: '+raw_transaction_data.txid)
         did_work = true
-        if (blockheight == -1 && raw_transaction_data.blockhash) {
+        if (blockheight === -1 && raw_transaction_data.blockhash) {
           console.warn('tx is parsing as mempool but in block!', raw_transaction_data.txid)
         }
         if (raw_transaction_data.time) {
@@ -1461,8 +1332,7 @@ Scanner.prototype.revert_txids = function (callback) {
               }
               cb()
             })
-          }
-          else {
+          } else {
             console.log('found tx that do not need to revert', txid)
             if (self.to_revert.indexOf(txid) !== -1) {
               self.to_revert.splice(self.to_revert.indexOf(txid), 1)
@@ -1516,7 +1386,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   console.log('start reverting (if needed)')
   async.waterfall([
     function (cb) {
-      self.revert_txids(cb)  
+      self.revert_txids(cb)
     },
     function (cb) {
       console.log('end reverting (if needed)')
@@ -1536,18 +1406,16 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}, function (err, transactions) {
             if (err) return cb(err)
             transactions.forEach(function (transaction) {
-              if (transaction.iosparsed && transaction.colored == transaction.ccparsed) {
+              if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
                 db_parsed_txids.push(transaction.txid)
-              }
-              else {
+              } else {
                 db_unparsed_txids.push(transaction.txid)
               }
             })
             if (transactions.length === limit) {
               console.log('got txs', skip + 1, '-', skip + limit)
-              skip+=limit
-            }
-            else {
+              skip += limit
+            } else {
               has_next = false
             }
             cb()
@@ -1557,7 +1425,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     },
     function (cb) {
       console.log('end find mempool db txs')
-      
       console.log('start find mempool bitcoind txs')
       bitcoin_rpc.cmd('getrawmempool', [], cb)
     },
@@ -1576,7 +1443,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       console.log('parsing new mempool txs (' + (new_txids.length - 1) + ')')
       cargo_size = new_txids.length
       var ended = 0
-      var end_func = function() {
+      var end_func = function () {
         if (!ended++) {
           self.removeListener('kill', end_func)
           console.log('mempool cargo ended.')
@@ -1633,15 +1500,15 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   var PROCESSING = 'PROCESSING'
   var transaction
   console.log('priority_parse: start', txid)
-  var end = function(err) {
-    if (self.priority_parse_list.indexOf(txid) != -1) {
+  var end = function (err) {
+    if (self.priority_parse_list.indexOf(txid) !== -1) {
       self.priority_parse_list.splice(self.priority_parse_list.indexOf(txid), 1)
     }
     callback(err)
   }
   async.waterfall([
     function (cb) {
-      if (self.priority_parse_list.indexOf(txid) != -1) {
+      if (self.priority_parse_list.indexOf(txid) !== -1) {
         return self.wait_for_parse(txid, function (err) {
           if (err) return cb(err)
           cb(PARSED)
@@ -1694,8 +1561,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       })
       if (err === PROCESSING) {
         return callback('In the middle of processing.')
-      }
-      else {
+      } else {
         return end(err)
       }
     }
