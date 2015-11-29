@@ -1140,6 +1140,13 @@ var calc_block_reward = function (block_height) {
   return reward
 }
 
+var get_block_height = function (blockhash, callback) {
+  bitcoin_rpc.cmd('getblock', [blockhash], function (err, block) {
+    if (err) return callback(err)
+    callback(null, block.height)
+  })
+}
+
 Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, callback) {
   var self = this
   var transaction_data
@@ -1160,29 +1167,36 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       if (transaction_data) {
         raw_transaction_data = transaction_data.toObject()
         blockheight = raw_transaction_data.blockheight || -1
-        cb()
+        cb(null, blockheight)
       } else {
         // logger.debug('parsing new tx: '+raw_transaction_data.txid)
         did_work = true
         if (blockheight === -1 && raw_transaction_data.blockhash) {
-          console.warn('tx is parsing as mempool but in block!', raw_transaction_data.txid)
+          get_block_height(raw_transaction_data.blockhash, cb)
         }
-        if (raw_transaction_data.time) {
-          raw_transaction_data.time = raw_transaction_data.time * 1000
+        else {
+          cb(null, blockheight)
         }
-        if (raw_transaction_data.blocktime) {
-          raw_transaction_data.blocktime = raw_transaction_data.blocktime * 1000
-        } else {
-          raw_transaction_data.blocktime = Date.now()
-        }
-        raw_transaction_data.blockheight = blockheight
-        // raw_transaction_data.tries = 0
-
-        var out = self.parse_vout(raw_transaction_data, blockheight, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
-        raw_transaction_data.iosparsed = false
-        raw_transaction_data.ccparsed = false
-        cb()
       }
+    },
+    function (l_blockheight, cb) {
+      blockheight = l_blockheight
+      if (transaction_data) return cb()
+      if (raw_transaction_data.time) {
+        raw_transaction_data.time = raw_transaction_data.time * 1000
+      }
+      if (raw_transaction_data.blocktime) {
+        raw_transaction_data.blocktime = raw_transaction_data.blocktime * 1000
+      } else {
+        raw_transaction_data.blocktime = Date.now()
+      }
+      raw_transaction_data.blockheight = blockheight
+      // raw_transaction_data.tries = 0
+
+      var out = self.parse_vout(raw_transaction_data, blockheight, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
+      raw_transaction_data.iosparsed = false
+      raw_transaction_data.ccparsed = false
+      cb()
     },
     function (cb) {
       if (raw_transaction_data.iosparsed) {
