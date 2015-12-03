@@ -734,9 +734,8 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
   var command_arr = []
 
   raw_block_data.tx.forEach(function (txhash) {
-    var index = self.to_revert.indexOf(txhash)
-    if (index !== -1) {
-      self.to_revert.splice(index, 1)
+    if (~self.to_revert.indexOf(txhash)) {
+      self.to_revert = []
     }
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
   })
@@ -1348,7 +1347,7 @@ Scanner.prototype.revert_txids = function (callback) {
             })
           } else {
             console.log('found tx that do not need to revert', txid)
-            if (self.to_revert.indexOf(txid) !== -1) {
+            if (~self.to_revert.indexOf(txid)) {
               self.to_revert.splice(self.to_revert.indexOf(txid), 1)
             }
             // No need for now....
@@ -1367,16 +1366,12 @@ Scanner.prototype.revert_txids = function (callback) {
         execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
           if (err) return cb(err)
           regular_txids.forEach(function (txid) {
-            var index = self.to_revert.indexOf(txid)
-            if (index !== -1) {
-              self.to_revert.splice(index, 1)
-            }
             self.emit('revertedtransaction', {txid: txid})
           })
           colored_txids.forEach(function (txid) {
             self.emit('revertedcctransaction', {txid: txid})
           })
-          // cb()
+          self.to_revert = []
           callback()
         })
       })
