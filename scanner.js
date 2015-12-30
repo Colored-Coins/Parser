@@ -1508,21 +1508,23 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   var PARSED = 'PARSED'
   var PROCESSING = 'PROCESSING'
   var transaction
-  console.log('priority_parse: start', txid)
+  console.time('priority_parse: '+ txid)
   var end = function (err) {
-    if (self.priority_parse_list.indexOf(txid) !== -1) {
+    if (~self.priority_parse_list.indexOf(txid)) {
       self.priority_parse_list.splice(self.priority_parse_list.indexOf(txid), 1)
     }
+    console.timeEnd('priority_parse: '+ txid)
     callback(err)
   }
   async.waterfall([
     function (cb) {
-      if (self.priority_parse_list.indexOf(txid) !== -1) {
+      if (~self.priority_parse_list.indexOf(txid)) {
         return self.wait_for_parse(txid, function (err) {
           if (err) return cb(err)
           cb(PARSED)
         })
       }
+      console.time('priority_parse: find in db '+ txid)
       self.priority_parse_list.push(txid)
       var conditions = {
         txid: txid,
@@ -1535,14 +1537,17 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       self.RawTransactions.findOne(conditions, projection).exec(cb)
     },
     function (tx, cb) {
-      console.log('priority_parse: got transaction from bitcoind', txid)
+      console.timeEnd('priority_parse: find in db '+ txid)
       if (tx) return cb(PARSED)
+      console.time('priority_parse: get_from_bitcoind '+ txid)
       bitcoin_rpc.cmd('getrawtransaction', [txid, 1], function (err, raw_transaction_data) {
         if (err && err.code === -5) return cb(['tx ' + txid + ' not found.', 204])
         cb(err, raw_transaction_data)
       })
     },
     function (raw_transaction_data, cb) {
+      console.timeEnd('priority_parse: get_from_bitcoind '+ txid)
+      console.time('priority_parse: parse inputs '+ txid)
       transaction = raw_transaction_data
       transaction = to_discrete(transaction)
       if (!transaction || !transaction.vin) return cb(['tx ' + txid + ' not found.', 204])
@@ -1552,12 +1557,12 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       cb)
     },
     function (cb) {
-      console.log('priority_parse: after priority_parse of all inputs', txid)
+      console.timeEnd('priority_parse: parse inputs '+ txid)
+      console.time('priority_parse: parse '+ txid)
       self.mempool_cargo.unshift(txid, cb)
     }
   ],
   function (err) {
-    console.log('priority_parse: end', txid)
     if (err) {
       if (err === PARSED) {
         process.send({to: properties.roles.API, priority_parsed: txid})
@@ -1574,6 +1579,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
         return end(err)
       }
     }
+    console.timeEnd('priority_parse: parse '+ txid)
     process.send({to: properties.roles.API, priority_parsed: txid})
     end()
   })
