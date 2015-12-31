@@ -181,7 +181,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
 }
 
 Scanner.prototype.fix_mempool = function (callback) {
-  RawTransactions.update({blockheight: -1}, {iosparsed: false, ccparsed: false}, callback)
+  this.RawTransactions.update({blockheight: -1}, {iosparsed: false, ccparsed: false}, callback)
 }
 
 Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, callback) {
@@ -190,7 +190,7 @@ Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_
     txid: txid
   }
   console.log('reverting tx ' + txid)
-  this.RawTransactions.findOne(conditions).exec(function (err, tx) {
+  self.RawTransactions.findOne(conditions).exec(function (err, tx) {
     if (err) return callback(err)
     if (!tx) return callback()
     async.waterfall([
