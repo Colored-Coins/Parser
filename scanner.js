@@ -163,16 +163,17 @@ Scanner.prototype.revert_block = function (block_height, callback) {
         colored_txids.forEach(function (txid) {
           self.emit('revertedcctransaction', {txid: txid})
         })
-        // logger.debug('deleting block')
-        self.Blocks.remove(conditions).exec(function (err) {
-          if (err) return callback(err)
-          // logger.debug('setting hashes')
-          self.emit('revertedblock', block_id)
-          self.set_last_hash(block_data.previousblockhash)
-          self.set_last_block(block_data.height - 1)
-          self.set_next_hash(null)
-          // logger.debug('done reverting')
-          self.fix_mempool(callback)
+        self.fix_mempool(function (err) {
+          // logger.debug('deleting block')
+          self.Blocks.remove(conditions).exec(function (err) {
+            if (err) return callback(err)
+            // logger.debug('setting hashes')
+            self.emit('revertedblock', block_id)
+            self.set_last_hash(block_data.previousblockhash)
+            self.set_last_block(block_data.height - 1)
+            self.set_next_hash(null)
+            // logger.debug('done reverting')
+          })
         })
       })
     })
