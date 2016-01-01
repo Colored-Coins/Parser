@@ -173,6 +173,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
             self.set_last_block(block_data.height - 1)
             self.set_next_hash(null)
             // logger.debug('done reverting')
+            callback()
           })
         })
       })
