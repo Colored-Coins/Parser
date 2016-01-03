@@ -1514,6 +1514,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   var PARSED = 'PARSED'
   var PROCESSING = 'PROCESSING'
   var transaction
+  console.log('start priority_parse: '+ txid)
   console.time('priority_parse: '+ txid)
   var end = function (err) {
     if (~self.priority_parse_list.indexOf(txid)) {
