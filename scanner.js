@@ -1512,7 +1512,6 @@ Scanner.prototype.wait_for_parse = function (txid, callback) {
 Scanner.prototype.priority_parse = function (txid, callback) {
   var self = this
   var PARSED = 'PARSED'
-  var PROCESSING = 'PROCESSING'
   var transaction
   console.log('start priority_parse: '+ txid)
   console.time('priority_parse: '+ txid)
@@ -1572,22 +1571,11 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   function (err) {
     if (err) {
       if (err === PARSED) {
-        process.send({to: properties.roles.API, priority_parsed: txid})
         return end()
       }
-      process.send({
-        to: properties.roles.API,
-        priority_parsed: txid,
-        err: err
-      })
-      if (err === PROCESSING) {
-        return callback('In the middle of processing.')
-      } else {
-        return end(err)
-      }
+      end(err)
     }
     console.timeEnd('priority_parse: parse '+ txid)
-    process.send({to: properties.roles.API, priority_parsed: txid})
     end()
   })
 }
