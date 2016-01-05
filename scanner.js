@@ -1415,11 +1415,13 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         colored: 1,
         ccparsed: 1
       }
-      console.log('start find mempool db txs')
       async.whilst(function () { return has_next },
         function (cb) {
+          console.log('start find mempool db txs')
           self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}, function (err, transactions) {
+            console.log('end find mempool db txs')
             if (err) return cb(err)
+            console.time('processing mempool db txs')
             transactions.forEach(function (transaction) {
               if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
                 db_parsed_txids.push(transaction.txid)
@@ -1427,8 +1429,9 @@ Scanner.prototype.parse_new_mempool = function (callback) {
                 db_unparsed_txids.push(transaction.txid)
               }
             })
+            console.timeEnd('processing mempool db txs')
             if (transactions.length === limit) {
-              console.log('got txs', skip + 1, '-', skip + limit)
+              console.log('getting txs', skip + 1, '-', skip + limit)
               skip += limit
             } else {
               has_next = false
@@ -1439,7 +1442,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       cb)
     },
     function (cb) {
-      console.log('end find mempool db txs')
       console.log('start find mempool bitcoind txs')
       bitcoin_rpc.cmd('getrawmempool', [], cb)
     },
