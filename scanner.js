@@ -1393,7 +1393,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   var db_unparsed_txids = []
   var new_txids
   var cargo_size
-  var limit = 100000
+  var limit = 1000
   var has_next = true
   var skip = 0
 
@@ -1413,13 +1413,14 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         txid: 1,
         iosparsed: 1,
         colored: 1,
-        ccparsed: 1
+        ccparsed: 1,
+        _id: 0
       }
       async.whilst(function () { return has_next },
         function (cb) {
-          console.log('start find mempool db txs')
+          console.time('find mempool db txs')
           self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}, function (err, transactions) {
-            console.log('end find mempool db txs')
+            console.timeEnd('find mempool db txs')
             if (err) return cb(err)
             console.time('processing mempool db txs')
             transactions.forEach(function (transaction) {
