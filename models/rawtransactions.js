@@ -99,6 +99,7 @@ module.exports = function (mongoose, properties) {
   })
 
   RawTransactionsSchema.post('find', function (docs) {
+    console.time('post_find')
     if (docs && properties) {
       docs.forEach(function (doc) {
         if (properties.last_block && doc.blockheight > -1) {
@@ -109,9 +110,11 @@ module.exports = function (mongoose, properties) {
         calc_fee(doc)
       })
     }
+    console.timeEnd('post_find')
   })
 
   RawTransactionsSchema.post('findOne', function (doc) {
+    console.time('post_findOne')
     if (doc && properties) {
       if (properties.last_block && doc.blockheight > -1) {
         doc.confirmations = properties.last_block - doc.blockheight + 1
@@ -120,6 +123,7 @@ module.exports = function (mongoose, properties) {
       }
       calc_fee(doc)
     }
+    console.timeEnd('post_findOne')
   })
 
   var calc_fee = function (doc) {
