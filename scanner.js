@@ -113,7 +113,10 @@ Scanner.prototype.scan_blocks = function (err) {
     }
   ], function (err) {
     if (debug && job) console.timeEnd(job)
-    if (err) self.to_revert = []
+    if (err) {
+      self.to_revert = []
+      self.mempool_txs = null
+    }
     self.scan_blocks(err)
   })
 }
@@ -743,6 +746,17 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
     if (~self.to_revert.indexOf(txhash)) {
       self.to_revert = []
     }
+    if (self.mempool_txs) {
+      var mempool_tx_index = -1
+      self.mempool_txs.forEach(function (mempool_tx, i) {
+        if (!~mempool_tx_index && mempool_tx.txid === txhash) {
+          mempool_tx_index = i
+        }
+      })
+      if (~mempool_tx_index) {
+        self.mempool_txs.splice(mempool_tx_index, 1)
+      }
+    }
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
   })
 
@@ -1243,7 +1257,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     emits.forEach(function (emit) {
       self.emit(emit[0], emit[1])
     })
-    callback()
+    callback(null, did_work)
   })
 }
 
@@ -1264,7 +1278,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   assets_transactions_bulk.bulk_name = 'assets_transactions_bulk'
   var assets_addresses_bulk = self.AssetsAddresses.collection.initializeUnorderedBulkOp()
   assets_addresses_bulk.bulk_name = 'assets_addresses_bulk'
-
+  var new_mempool_txs = []
   var command_arr = []
   txids = _.uniq(txids)
   var ph_index = txids.indexOf('PH')
@@ -1284,8 +1298,17 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       return cb()
     }
     raw_transaction_data = to_discrete(raw_transaction_data)
-    self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, function (err) {
-      cb(err)
+    self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, function (err, did_work) {
+      if (err) return cb(err)
+      if (did_work) {
+        new_mempool_txs.push({
+          txid: raw_transaction_data.txid,
+          iosparsed: raw_transaction_data.iosparsed,
+          colored: raw_transaction_data.colored,
+          ccparsed: raw_transaction_data.ccparsed
+        })
+      }
+      cb()
     })
   },
   function (err) {
@@ -1301,11 +1324,31 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_utxos_bulk, assets_transactions_bulk, assets_addresses_bulk, raw_transaction_bulk], function (err) {
       if (err) {
         self.to_revert = []
+        self.mempool_txs = null
         console.log('killing in the name of!')
         console.error('execute cargo bulk error ', err)
         self.mempool_cargo.kill()
         self.emit('kill')
       }
+      new_mempool_txs.forEach(function (mempool_tx) {
+        var found = false
+        self.mempool_txs.forEach(function (self_mempool_tx) {
+          if (!found && mempool_tx.txid === self_mempool_tx.txid) {
+            found = true
+            self_mempool_tx.iosparsed = mempool_tx.iosparsed
+            self_mempool_tx.colored = mempool_tx.colored
+            self_mempool_tx.ccparsed = mempool_tx.ccparsed
+          }
+        })
+        if (!found) {
+          self.mempool_txs.push({
+            txid: mempool_tx.txid,
+            iosparsed: mempool_tx.iosparsed,
+            colored: mempool_tx.colored,
+            ccparsed: mempool_tx.ccparsed
+          })
+        }
+      })
       callback()
     })
   })
@@ -1405,42 +1448,56 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     },
     function (cb) {
       console.log('end reverting (if needed)')
-      self.emit('mempool')
-      var conditions = {
-        blockheight: -1
-      }
-      var projection = {
-        txid: 1,
-        iosparsed: 1,
-        colored: 1,
-        ccparsed: 1,
-        _id: 0
-      }
-      async.whilst(function () { return has_next },
-        function (cb) {
-          console.time('find mempool db txs')
-          self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}, function (err, transactions) {
-            console.timeEnd('find mempool db txs')
-            if (err) return cb(err)
-            console.time('processing mempool db txs')
-            transactions.forEach(function (transaction) {
-              if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
-                db_parsed_txids.push(transaction.txid)
+      if (!self.mempool_txs) {
+        self.emit('mempool')
+        var conditions = {
+          blockheight: -1
+        }
+        var projection = {
+          txid: 1,
+          iosparsed: 1,
+          colored: 1,
+          ccparsed: 1,
+          _id: 0
+        }
+        self.mempool_txs = []
+        async.whilst(function () { return has_next },
+          function (cb) {
+            console.time('find mempool db txs')
+            self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}, function (err, transactions) {
+              console.timeEnd('find mempool db txs')
+              if (err) return cb(err)
+              console.time('processing mempool db txs')
+              self.mempool_txs.concat(transactions)
+              transactions.forEach(function (transaction) {
+                if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
+                  db_parsed_txids.push(transaction.txid)
+                } else {
+                  db_unparsed_txids.push(transaction.txid)
+                }
+              })
+              console.timeEnd('processing mempool db txs')
+              if (transactions.length === limit) {
+                console.log('getting txs', skip + 1, '-', skip + limit)
+                skip += limit
               } else {
-                db_unparsed_txids.push(transaction.txid)
+                has_next = false
               }
+              cb()
             })
-            console.timeEnd('processing mempool db txs')
-            if (transactions.length === limit) {
-              console.log('getting txs', skip + 1, '-', skip + limit)
-              skip += limit
-            } else {
-              has_next = false
-            }
-            cb()
-          })
-        },
-      cb)
+          },
+        cb)
+      } else {
+        self.mempool_txs.forEach(function (transaction) {
+          if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
+            db_parsed_txids.push(transaction.txid)
+          } else {
+            db_unparsed_txids.push(transaction.txid)
+          }
+        })
+        cb()
+      }
+
     },
     function (cb) {
       console.log('start find mempool bitcoind txs')
@@ -1473,6 +1530,19 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         if (!--cargo_size) {
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
           self.to_revert = self.to_revert.concat(db_txids)
+          db_txids.forEach(function (txid) {
+            if (self.mempool_txs) {
+              var mempool_tx_index = -1
+              self.mempool_txs.forEach(function (mempool_tx, i) {
+                if (!~mempool_tx_index && mempool_tx.txid === txid) {
+                  mempool_tx_index = i
+                }
+              })
+              if (~mempool_tx_index) {
+                self.mempool_txs.splice(mempool_tx_index, 1)
+              }
+            }
+          })
           end_func()
         }
       })
