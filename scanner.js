@@ -1445,6 +1445,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     },
     function (cb) {
       console.log('end reverting (if needed)')
+      self.mempool_txs = null
       if (!self.mempool_txs) {
         self.emit('mempool')
         var conditions = {
