@@ -1436,9 +1436,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   var db_unparsed_txids = []
   var new_txids
   var cargo_size
-  var limit = 1000
-  var has_next = true
-  var skip = 0
 
   if (properties.scanner.mempool !== 'true') return callback()
   console.log('start reverting (if needed)')
@@ -1460,9 +1457,13 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           ccparsed: 1,
           _id: 0
         }
+        var limit = 1000
+        var has_next = true
+        var skip = 0
         self.mempool_txs = []
         async.whilst(function () { return has_next },
           function (cb) {
+            console.log('start finding: conditions=', conditions, 'projection=', projection)
             console.time('find mempool db txs')
             self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}, function (err, transactions) {
               console.timeEnd('find mempool db txs')
@@ -1488,6 +1489,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           },
         cb)
       } else {
+        console.log('caching mempool from memory')
         self.mempool_txs.forEach(function (transaction) {
           if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
             db_parsed_txids.push(transaction.txid)
