@@ -1445,7 +1445,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
     },
     function (cb) {
       console.log('end reverting (if needed)')
-      self.mempool_txs = null
       if (!self.mempool_txs) {
         self.emit('mempool')
         var conditions = {
@@ -1458,19 +1457,18 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           ccparsed: 1,
           _id: 0
         }
-        var limit = 1000
+        var limit = 10000
         var has_next = true
         var skip = 0
         self.mempool_txs = []
         async.whilst(function () { return has_next },
           function (cb) {
-            console.log('start finding: conditions=', conditions, 'projection=', projection)
             console.time('find mempool db txs')
             self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}, function (err, transactions) {
               console.timeEnd('find mempool db txs')
               if (err) return cb(err)
               console.time('processing mempool db txs')
-              self.mempool_txs.concat(transactions)
+              self.mempool_txs = self.mempool_txs.concat(transactions)
               transactions.forEach(function (transaction) {
                 if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
                   db_parsed_txids.push(transaction.txid)
@@ -1490,7 +1488,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           },
         cb)
       } else {
-        console.log('caching mempool from memory')
+        console.log('getting mempool from memory cache')
         self.mempool_txs.forEach(function (transaction) {
           if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
             db_parsed_txids.push(transaction.txid)
