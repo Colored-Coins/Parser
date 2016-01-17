@@ -127,7 +127,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
   var conditions = {
     height: block_height
   }
-  self.Blocks.findOne(conditions).exec(function (err, block_data) {
+  self.Blocks.findOne(conditions).lean().exec(function (err, block_data) {
     if (err) return callback(err)
     if (!block_data || !block_data.tx) return callback()
     var block_id = {
@@ -194,7 +194,7 @@ Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_
     txid: txid
   }
   console.log('reverting tx ' + txid)
-  self.RawTransactions.findOne(conditions).exec(function (err, tx) {
+  self.RawTransactions.findOne(conditions).lean().exec(function (err, tx) {
     if (err) return callback(err)
     if (!tx) return callback()
     async.waterfall([
@@ -233,7 +233,7 @@ Scanner.prototype.revert_vin = function (tx, utxo_bulk, addresses_transactions_b
   conditions = {
     $or: conditions
   }
-  this.Utxo.find(conditions).exec(function (err, useds) {
+  this.Utxo.find(conditions).lean().exec(function (err, useds) {
     if (err) return callback(err)
     if (!useds || !useds.length) return callback()
     useds.forEach(function (used) {
@@ -395,14 +395,13 @@ Scanner.prototype.fix_blocks = function (err, callback) {
           raw_transaction_bulk.find({txid: transaction_data.txid}).updateOne({
             $set: {
               iosparsed: all_fixed,
-              vin: transaction_data.toObject().vin,
+              vin: transaction_data.vin,
               tries: transaction_data.tries || 0,
               fee: transaction_data.fee,
               totalsent: transaction_data.totalsent
 
             }
           })
-          // transaction_data.save(cb)
           if (!transaction_data.colored && all_fixed) {
             emits.push(['newtransaction', transaction_data])
             // self.emit('newtransaction', transaction_data)
@@ -505,7 +504,6 @@ Scanner.prototype.parse_cc = function (err, callback) {
         return close_blocks(null, true)
       }
       transactions_data.forEach(function (transaction_data) {
-        transaction_data = transaction_data.toObject()
         // var raw_block_data = raw_block_datas[transaction_data.blockheight - first_block]
         self.parse_cc_tx(transaction_data, utxo_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk)
 
@@ -590,7 +588,7 @@ Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_
     blockheight: {$gte: first_block, $lte: last_block}
   }
 
-  this.RawTransactions.find(conditions).sort('blockheight').limit(1000).exec(callback)
+  this.RawTransactions.find(conditions).sort('blockheight').limit(1000).lean().exec(callback)
 }
 
 Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block, last_block, callback) {
@@ -604,7 +602,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     blockheight: 1,
     tries: 1
   }
-  this.RawTransactions.find(conditions).sort(sort).limit(200).exec(callback)
+  this.RawTransactions.find(conditions).sort(sort).limit(200).lean().exec(callback)
 }
 
 Scanner.prototype.set_next_hash = function (next_hash) {
@@ -643,11 +641,13 @@ Scanner.prototype.get_next_block_to_cc_parse = function (limit, callback) {
     fees: 1,
     confirmations: 1,
     txlength: 1,
-    txsparsed: 1
+    txsparsed: 1,
+    _id: 0
   }
   this.Blocks.find(conditions, projection)
   .sort('height')
   .limit(limit)
+  .lean()
   .exec(callback)
 }
 
@@ -658,17 +658,13 @@ Scanner.prototype.get_next_block_to_fix = function (limit, callback) {
   }
   var projection = {
     height: 1,
-    hash: 1
-    // time: 1,
-    // size: 1,
-    // totalsent: 1,
-    // fees: 1,
-    // confirmations: 1,
-    // txlength: 1
+    hash: 1,
+    _id: 0
   }
   this.Blocks.find(conditions, projection)
   .sort('height')
   .limit(limit)
+  .lean()
   .exec(callback)
 }
 
@@ -678,8 +674,14 @@ Scanner.prototype.get_next_new_block = function (callback) {
     return callback(null, properties.last_block + 1, properties.last_hash)
   }
   console.log('scanner.Blocks', !!self.Blocks)
-  self.Blocks.findOne({txinserted: true})
+  self.Blocks.findOne({txinserted: true},
+    {
+      height: 1,
+      hash: 1,
+      _id: 0
+    })
     .sort('-height')
+    .lean()
     .exec(function (err, block_data) {
       if (err) return callback(err)
       if (block_data) {
@@ -906,7 +908,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
         }
       })
       if (!coinbase) {
-        self.RawTransactions.find({'$or': conditions}).exec(cb)
+        self.RawTransactions.find({'$or': conditions}).lean().exec(cb)
       } else {
         cb(null, [])
       }
@@ -941,7 +943,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
         })
       }
       if (conditions.length) {
-        self.Utxo.find({'$or': conditions}).exec(cb)
+        self.Utxo.find({'$or': conditions}).lean().exec(cb)
       } else {
         return cb(null, [])
       }
@@ -973,7 +975,6 @@ var add_insert_update_to_bulk = function (raw_transaction_data, vins, utxos) {
     //   index: utxo.index
     // }
 
-    utxo = utxo.toObject()
     vin.previousOutput = utxo.scriptPubKey
     vin.assets = utxo.assets || []
     vin.value = utxo.value || null
@@ -1179,12 +1180,12 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   async.waterfall([
     function (cb) {
       // if (raw_transaction_data.from_db) return cb(null, raw_transaction_data)
-      self.RawTransactions.findOne(conditions, cb)
+      self.RawTransactions.findOne(conditions).lean().exec(cb)
     },
     function (l_transaction_data, cb) {
       transaction_data = l_transaction_data
       if (transaction_data) {
-        raw_transaction_data = transaction_data.toObject()
+        raw_transaction_data = transaction_data
         blockheight = raw_transaction_data.blockheight || -1
         cb(null, blockheight)
       } else {
@@ -1464,7 +1465,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         async.whilst(function () { return has_next },
           function (cb) {
             console.time('find mempool db txs')
-            self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}, function (err, transactions) {
+            self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}).lean().exec(function (err, transactions) {
               console.timeEnd('find mempool db txs')
               if (err) return cb(err)
               console.time('processing mempool db txs')
@@ -1577,7 +1578,7 @@ Scanner.prototype.wait_for_parse = function (txid, callback) {
   var projection = {
     txid: 1
   }
-  self.RawTransactions.findOne(conditions, projection).exec(function (err, transaction) {
+  self.RawTransactions.findOne(conditions, projection).lean().exec(function (err, transaction) {
     if (err) return end(err)
     if (transaction) end()
   })
@@ -1614,7 +1615,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       var projection = {
         txid: 1
       }
-      self.RawTransactions.findOne(conditions, projection).exec(cb)
+      self.RawTransactions.findOne(conditions, projection).lean().exec(cb)
     },
     function (tx, cb) {
       console.timeEnd('priority_parse: find in db '+ txid)
