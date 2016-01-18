@@ -535,8 +535,10 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_tr
   // logger.debug('parsing cc: '+transaction_data.txid)
   if (transaction_data.iosparsed && transaction_data.ccdata && transaction_data.ccdata.length) {
     var assets = get_assets_outputs(transaction_data)
+    var index = 0
     assets.forEach(function (asset, out_index) {
       // logger.debug('found cc asset '+JSON.stringify(asset)+' in tx: '+transaction_data.txid)
+      index = out_index
       if (asset) {
         transaction_data.vout[out_index].assets = asset
         var conditions = {
@@ -572,8 +574,13 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_tr
             })
           }
         })
+      } else {
+        transaction_data.vout[out_index].assets = []
       }
     })
+    for (var i = index + 1; i < transaction_data.vout.length; i++) {
+      transaction_data.vout[i].assets = transaction_data.vout[i].assets || []
+    }
   }
 }
 
@@ -1026,6 +1033,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utx
   if (!raw_transaction_data.vout) return 0
   // var assets
   raw_transaction_data.colored = false
+  raw_transaction_data.ccdata = raw_transaction_data.ccdata || []
   // raw_transaction_data.ccparsed = false
   var addresses_transactions_in_bulks = []
   var addresses_utxos_in_bulks = []
@@ -1047,7 +1055,6 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utx
         }
         if (cc) {
           // logger.debug('colored!')
-          raw_transaction_data.ccdata = raw_transaction_data.ccdata || []
           raw_transaction_data.ccdata.push(cc)
           raw_transaction_data.colored = true
           // raw_transaction_data.ccparsed = false
