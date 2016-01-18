@@ -26,6 +26,15 @@ module.exports = function (mongoose) {
     blocktime: Date
   })
 
+  var round = function (doc) {
+    if (doc.value) doc.value = Math.round(doc.value)
+    if (doc.assets) {
+      doc.assets.forEach(function (asset) {
+        if (asset.amount) asset.amount = Math.round(asset.amount)
+      })
+    }
+  }
+
   Utxo.index(
     {
       txid: 1,
@@ -43,5 +52,20 @@ module.exports = function (mongoose) {
       unique: true
     }
   )
+
+  Utxo.post('find', function (docs) {
+    if (docs) {
+      docs.forEach(function (doc) {
+        round(doc)
+      })
+    }
+  })
+
+  Utxo.post('findOne', function (doc) {
+    if (doc) {
+      round(doc)
+    }
+  })
+
   return Utxo
 }

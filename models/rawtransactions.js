@@ -98,6 +98,31 @@ module.exports = function (mongoose, properties) {
     'iosparsed': 1
   })
 
+  var round = function (doc) {
+    if (doc.fee) doc.reward = Math.round(doc.reward)
+    if (doc.totalsent) doc.totalsent = Math.round(doc.totalsent)
+    if (doc.vin) {
+      doc.vin.forEach(function (vin) {
+        if (vin.value) vin.value = Math.round(vin.value)
+        if (vin.assets) {
+          vin.assets.forEach(function (asset) {
+            if (asset.amount) asset.amount = Math.round(asset.amount)
+          })
+        }
+      })
+    }
+    if (doc.vout) {
+      doc.vout.forEach(function (vout) {
+        if (vout.value) vout.value = Math.round(vout.value)
+        if (vout.assets) {
+          vout.assets.forEach(function (asset) {
+            if (asset.amount) asset.amount = Math.round(asset.amount)
+          })
+        }
+      })
+    }
+  }
+
   RawTransactionsSchema.post('find', function (docs) {
     if (docs && properties) {
       docs.forEach(function (doc) {
@@ -107,6 +132,7 @@ module.exports = function (mongoose, properties) {
           doc.confirmations = 0
         }
         calc_fee(doc)
+        round(doc)
       })
     }
   })
@@ -119,6 +145,7 @@ module.exports = function (mongoose, properties) {
         doc.confirmations = 0
       }
       calc_fee(doc)
+      round(doc)
     }
   })
 

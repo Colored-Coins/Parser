@@ -27,10 +27,19 @@ module.exports = function (mongoose, properties) {
     txinserted: 1, txsparsed: 1, height: 1
   })
 
+  var round = function (doc) {
+    if (doc.reward) doc.reward = Math.round(doc.reward)
+    if (doc.totalsent) doc.totalsent = Math.round(doc.totalsent)
+    if (doc.fees) doc.fees = Math.round(doc.fees)
+  }
+
   BlocksSchema.post('find', function (docs) {
-    if (docs && properties && properties.last_block) {
+    if (docs) {
       docs.forEach(function (doc) {
-        doc.confirmations = properties.last_block - doc.height + 1
+        if (properties && properties.last_block) {
+          doc.confirmations = properties.last_block - doc.height + 1
+        }
+        round(doc)
       })
     }
   })
@@ -39,6 +48,9 @@ module.exports = function (mongoose, properties) {
     if (doc && properties && properties.last_block) {
       doc.confirmations = properties.last_block - doc.height + 1
       return doc
+    }
+    if (doc) {
+      round(doc)  
     }
   })
 
