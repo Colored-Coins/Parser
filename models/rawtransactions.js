@@ -99,7 +99,7 @@ module.exports = function (mongoose, properties) {
   })
 
   var round = function (doc) {
-    if (doc.fee) doc.reward = Math.round(doc.reward)
+    if (doc.fee) doc.fee = Math.round(doc.fee)
     if (doc.totalsent) doc.totalsent = Math.round(doc.totalsent)
     if (doc.vin) {
       doc.vin.forEach(function (vin) {
