@@ -65,6 +65,7 @@ function Scanner (settings, db) {
 util.inherits(Scanner, events.EventEmitter)
 
 Scanner.prototype.scan_blocks = function (err) {
+  console.log('Scanner.scan_blocks')
   var self = this
   if (err) {
     console.error(err)
@@ -1421,6 +1422,7 @@ Scanner.prototype.revert_txids = function (callback) {
         if (err) return cb(err)
         // logger.debug('executing bulks')
         execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
+          console.log('execute_bulks_parallel callback, err = ', err)
           if (err) return cb(err)
           regular_txids.forEach(function (txid) {
             self.emit('revertedtransaction', {txid: txid})
@@ -1429,6 +1431,7 @@ Scanner.prototype.revert_txids = function (callback) {
             self.emit('revertedcctransaction', {txid: txid})
           })
           self.to_revert = []
+          console.log('execute_bulks_parallel(), calling callback()')
           callback()
         })
       })
