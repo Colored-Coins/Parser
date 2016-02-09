@@ -1338,25 +1338,27 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
         self.mempool_cargo.kill()
         self.emit('kill')
       }
-      new_mempool_txs.forEach(function (mempool_tx) {
-        var found = false
-        self.mempool_txs.forEach(function (self_mempool_tx) {
-          if (!found && mempool_tx.txid === self_mempool_tx.txid) {
-            found = true
-            self_mempool_tx.iosparsed = mempool_tx.iosparsed
-            self_mempool_tx.colored = mempool_tx.colored
-            self_mempool_tx.ccparsed = mempool_tx.ccparsed
+      if (self.mempool_txs) {
+        new_mempool_txs.forEach(function (mempool_tx) {
+          var found = false
+          self.mempool_txs.forEach(function (self_mempool_tx) {
+            if (!found && mempool_tx.txid === self_mempool_tx.txid) {
+              found = true
+              self_mempool_tx.iosparsed = mempool_tx.iosparsed
+              self_mempool_tx.colored = mempool_tx.colored
+              self_mempool_tx.ccparsed = mempool_tx.ccparsed
+            }
+          })
+          if (!found) {
+            self.mempool_txs.push({
+              txid: mempool_tx.txid,
+              iosparsed: mempool_tx.iosparsed,
+              colored: mempool_tx.colored,
+              ccparsed: mempool_tx.ccparsed
+            })
           }
         })
-        if (!found) {
-          self.mempool_txs.push({
-            txid: mempool_tx.txid,
-            iosparsed: mempool_tx.iosparsed,
-            colored: mempool_tx.colored,
-            ccparsed: mempool_tx.ccparsed
-          })
-        }
-      })
+      }
       callback()
     })
   })
