@@ -1337,8 +1337,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
         console.error('execute cargo bulk error ', err)
         self.mempool_cargo.kill()
         self.emit('kill')
-      }
-      if (self.mempool_txs) {
+      } else if (self.mempool_txs) {
         new_mempool_txs.forEach(function (mempool_tx) {
           var found = false
           self.mempool_txs.forEach(function (self_mempool_tx) {
