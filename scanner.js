@@ -456,7 +456,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
     // var next_block = raw_block_data.height
     var did_work = false
     var close_blocks = function (err, empty) {
-      logger.info('parse_cc - close_blocks(): empty = ' +  empty + ', did_work = ' + did_work)
+      console.log('parse_cc - close_blocks(): empty = ' +  empty + ', did_work = ' + did_work)
       if (debug) console.timeEnd('parse_cc_bulks')
       if (err) return callback(err)
       emits.forEach(function (emit) {
@@ -474,7 +474,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
       var bulk = self.Blocks.collection.initializeUnorderedBulkOp()
       raw_block_datas.forEach(function (raw_block_data) {
         if (raw_block_data.txsparsed) {
-          logger.info('self.emit(\'newblock\')')
+          console.log('self.emit(\'newblock\')')
           self.emit('newblock', raw_block_data)
           self.set_last_fully_parsed_block(raw_block_data.height)
           bulk.find({hash: raw_block_data.hash}).updateOne({
