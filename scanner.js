@@ -1198,8 +1198,12 @@ var get_block_height = function (blockhash, callback) {
 Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, close_raw_transactions_bulk, emits, callback) {
   var self = this
   var transaction_data
-  var did_work = {}
+  var did_work = false
+  var iosparsed
+  var ccparsed
   var blockheight = -1
+  // var parsing_vin = false
+  var emits = []
   var conditions = {
     txid: raw_transaction_data.txid
   }
@@ -1216,7 +1220,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         cb(null, blockheight)
       } else {
         // logger.debug('parsing new tx: '+raw_transaction_data.txid)
-        did_work.any = true
+        did_work = true
         if (blockheight === -1 && raw_transaction_data.blockhash) {
           get_block_height(raw_transaction_data.blockhash, cb)
         }
@@ -1237,6 +1241,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         raw_transaction_data.blocktime = Date.now()
       }
       raw_transaction_data.blockheight = blockheight
+      // raw_transaction_data.tries = 0
 
       var out = self.parse_vout(raw_transaction_data, blockheight, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
       raw_transaction_data.iosparsed = false
@@ -1248,36 +1253,40 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         cb(null, null, true)
       } else {
         // logger.debug('parsing tx vin: '+raw_transaction_data.txid)
-        did_work.any = true
+        did_work = true
         self.parse_vin(raw_transaction_data, blockheight, utxo_bulk, cb)
       }
     },
     function (coinbase, all_fixed, cb) {
-      if (raw_transaction_data.ccparsed) {
+      if (raw_transaction_data.ccparsed) {  
         cb(null, null)
       } else {
-        // raw_transaction_data.iosparsed = all_fixed
-				did_work.any = true
-        did_work.iosparsed = all_fixed
+        raw_transaction_data.iosparsed = all_fixed
+        // did_work = did_work || (parsing_vin && all_fixed)
         if (all_fixed && raw_transaction_data.colored && !raw_transaction_data.ccparsed) {
           self.parse_cc_tx(raw_transaction_data, utxo_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk)
-          // raw_transaction_data.ccparsed = true
-          did_work.ccparsed = true
+          raw_transaction_data.ccparsed = true
+          did_work = true
         }
         if (did_work && all_fixed) {
-          console.log('parse_new_mempool_transaction() -> emit(newtransaction), process.env.ROLE = ' + process.env.ROLE + ', txid = ' + raw_transaction_data.txid)
+          console.log('parse_new_mempool_transaction() -> emit(newtransaction), txid = ' + raw_transaction_data.txid)
           emits.push(['newtransaction', raw_transaction_data])
           if (raw_transaction_data.colored) {
             emits.push(['newcctransaction', raw_transaction_data])
           }
         }
-        if (did_work.any) {
+        if (did_work) { 
+          iosparsed = raw_transaction_data.iosparsed
+          ccparsed = raw_transaction_data.ccparsed
+          //to be updated with close_raw_transactions_bulk
+          raw_transaction_data.iosparsed = false  
+          raw_transaction_data.ccparsed = false 
           raw_transaction_bulk.find(conditions).upsert().updateOne(raw_transaction_data)
-          if (did_work.iosparsed || did_work.ccparsed) {
+          if (iosparsed || ccparsed) {
             close_raw_transactions_bulk.find(conditions).updateOne({
               $set: {
-                iosparsed: did_work.iosparsed,  
-                ccparsed: did_work.ccparsed
+                iosparsed: iosparsed,  
+                ccparsed: ccparsed
               }
             })
           }
@@ -1288,7 +1297,10 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   ],
   function (err) {
     if (err) return callback(err)
-    callback(null, did_work)
+    emits.forEach(function (emit) {
+      self.emit(emit[0], emit[1])
+    })
+    callback(null, did_work, raw_transaction_data.iosparsed || iosparsed, raw_transaction_data.ccparsed || ccparsed)
   })
 }
 
@@ -1341,14 +1353,14 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       return cb()
     }
     raw_transaction_data = to_discrete(raw_transaction_data)
-    self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, close_raw_transactions_bulk, emits, function (err, did_work) {
+    self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, close_raw_transactions_bulk, emits, function (err, did_work, iosparsed, ccparsed) {
       if (err) return cb(err)
       if (did_work && did_work.any) {
         new_mempool_txs.push({
           txid: raw_transaction_data.txid,
-          iosparsed: did_work.iosparsed,
+          iosparsed: iosparsed,
           colored: raw_transaction_data.colored,
-          ccparsed: did_work.ccparsed
+          ccparsed: ccparsed
         })
       }
       cb()
