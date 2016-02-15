@@ -33,13 +33,11 @@ function Scanner (settings, db) {
   self.AssetsUtxos = db.model('assetsutxos', require(__dirname + '/models/assetsutxos')(db))
   self.AssetsAddresses = db.model('assetsaddresses', require(__dirname + '/models/assetsaddresses')(db))
 
-  // if (process.env.ROLE === properties.roles.SCANNER) {
+  if (process.env.ROLE !== properties.roles.API) {
     self.on('newblock', function (newblock) {
-      console.log('self.on(newblock) , process.env.ROLE = ' + process.env.ROLE)
       process.send({to: properties.roles.API, newblock: newblock})
     })
     self.on('newtransaction', function (newtransaction) {
-      console.log('self.on(newtransaction) , process.env.ROLE = ' + process.env.ROLE)
       process.send({to: properties.roles.API, newtransaction: newtransaction})
     })
     self.on('newcctransaction', function (newcctransaction) {
@@ -57,7 +55,7 @@ function Scanner (settings, db) {
     self.on('mempool', function () {
       process.send({to: properties.roles.API, mempool: true})
     })
-  // }
+  }
 
   self.mempool_cargo = async.cargo(function (tasks, callback) {
     self.parse_mempool_cargo(tasks, callback)
@@ -459,7 +457,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
     // var next_block = raw_block_data.height
     var did_work = false
     var close_blocks = function (err, empty) {
-      console.log('parse_cc - close_blocks(): empty = ' +  empty + ', did_work = ' + did_work)
+      console.log('parse_cc - close_blocks(): emits = ', emits)
       if (debug) console.timeEnd('parse_cc_bulks')
       if (err) return callback(err)
       emits.forEach(function (emit) {
@@ -477,7 +475,6 @@ Scanner.prototype.parse_cc = function (err, callback) {
       var bulk = self.Blocks.collection.initializeUnorderedBulkOp()
       raw_block_datas.forEach(function (raw_block_data) {
         if (raw_block_data.txsparsed) {
-          console.log('parse_cc() -> self.emit(newblock) , process.env.ROLE = ' + process.env.ROLE)
           self.emit('newblock', raw_block_data)
           self.set_last_fully_parsed_block(raw_block_data.height)
           bulk.find({hash: raw_block_data.hash}).updateOne({
@@ -523,7 +520,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
         // var raw_block_data = raw_block_datas[transaction_data.blockheight - first_block]
         self.parse_cc_tx(transaction_data, utxo_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk)
 
-        console.log('parse_cc() -> after parse_cc_tx() , txid = ' + transaction_data.txid + ', assets = ', _.map(transaction_data.vout, function(output) { return output.assets}))
+        console.log('parse_cc() -> after parse_cc_tx() , transaction_data = ', transaction_data)
 
         if (transaction_data.iosparsed) {
           did_work = true
@@ -560,6 +557,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
 Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk) {
   if (transaction_data.iosparsed && transaction_data.ccdata && transaction_data.ccdata.length) {
     var assets = get_assets_outputs(transaction_data)
+    console.log('parse_cc_tx(): assets = ', assets)
     var index = 0
     assets.forEach(function (asset, out_index) {
       // logger.debug('found cc asset '+JSON.stringify(asset)+' in tx: '+transaction_data.txid)
@@ -1265,9 +1263,6 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         did_work.iosparsed = all_fixed
         if (all_fixed && raw_transaction_data.colored && !raw_transaction_data.ccparsed) {
           self.parse_cc_tx(raw_transaction_data, utxo_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk)
-
-          console.log('parse_new_mempool_transaction() -> after parse_cc_tx() , txid = ' + raw_transaction_data.txid + ', assets = ', _.map(raw_transaction_data.vout, function(output) { return output.assets}))
-
           // raw_transaction_data.ccparsed = true
           did_work.ccparsed = true
         }
