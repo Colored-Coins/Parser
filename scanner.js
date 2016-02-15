@@ -536,7 +536,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
               ccparsed: true
             }
           })
-          console.log('parse_cc() -> after parse_cc_tx() emit(newtransaction), assets = ', _.map(transaction_data.vout, function(output) { return (typeof output.assets === 'undefined')? 'undefined' : _.map(assets, function (asset) { return asset.assetId}) }),   ', transaction_data = ', transaction_data)
+          console.log('parse_cc() -> after parse_cc_tx() emit(newtransaction), assets = ', _.map(transaction_data.vout, function (output) { return (typeof output.assets === 'undefined')? 'undefined' : _.map(output.assets, function (asset) { return asset.assetId}) }),   ', transaction_data = ', transaction_data)
           emits.push(['newcctransaction', transaction_data])
           emits.push(['newtransaction', transaction_data])
         }
