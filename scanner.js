@@ -457,7 +457,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
     // var next_block = raw_block_data.height
     var did_work = false
     var close_blocks = function (err, empty) {
-      console.log('parse_cc - close_blocks(): emits = ', emits)
+      console.log('parse_cc - close_blocks(): emits.length = ', emits.length, ', emits = ', emits)
       if (debug) console.timeEnd('parse_cc_bulks')
       if (err) return callback(err)
       emits.forEach(function (emit) {
@@ -520,7 +520,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
         // var raw_block_data = raw_block_datas[transaction_data.blockheight - first_block]
         self.parse_cc_tx(transaction_data, utxo_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk)
 
-        console.log('parse_cc() -> after parse_cc_tx() , transaction_data = ', transaction_data)
+        console.log('parse_cc() -> after parse_cc_tx() , assets = ', _.map(transaction_data.vout, function(output) { return output.assets }),   ', transaction_data = ', transaction_data)
 
         if (transaction_data.iosparsed) {
           did_work = true
@@ -555,9 +555,10 @@ Scanner.prototype.parse_cc = function (err, callback) {
 }
 
 Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk) {
+  console.log('parse_cc_tx() - transaction_data = ', transaction_data)
   if (transaction_data.iosparsed && transaction_data.ccdata && transaction_data.ccdata.length) {
     var assets = get_assets_outputs(transaction_data)
-    console.log('parse_cc_tx(): assets = ', assets)
+    console.log('parse_cc_tx(): assets.length = ', assets.length, ', assets = ', assets)
     var index = 0
     assets.forEach(function (asset, out_index) {
       // logger.debug('found cc asset '+JSON.stringify(asset)+' in tx: '+transaction_data.txid)
