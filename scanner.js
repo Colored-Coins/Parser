@@ -410,7 +410,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
             }
           })
           if (!transaction_data.colored && all_fixed) {
-            console.log('fix_blocks() -> emit(newtransaction), process.env.ROLE = ' + process.env.ROLE)
+            console.log('fix_blocks() -> emit(newtransaction), .colored = ' + transaction_data.colored + 'process.env.ROLE = ' + process.env.ROLE + ', txid = ' + transaction_data.txid)
             emits.push(['newtransaction', transaction_data])
           }
           cb()
@@ -520,8 +520,6 @@ Scanner.prototype.parse_cc = function (err, callback) {
         // var raw_block_data = raw_block_datas[transaction_data.blockheight - first_block]
         self.parse_cc_tx(transaction_data, utxo_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk)
 
-        console.log('parse_cc() -> after parse_cc_tx() , assets = ', _.map(transaction_data.vout, function(output) { return output.assets }),   ', transaction_data = ', transaction_data)
-
         if (transaction_data.iosparsed) {
           did_work = true
           var conditions = {
@@ -538,7 +536,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
               ccparsed: true
             }
           })
-          console.log('parse_cc() -> emit(newtransaction) , process.env.ROLE = ' + process.env.ROLE)
+          console.log('parse_cc() -> after parse_cc_tx() emit(newtransaction), assets = ', _.map(transaction_data.vout, function(output) { return (typeof output.assets === 'undefined')? 'undefined' : _.map(assets, function (asset) { return asset.assetId}) }),   ', transaction_data = ', transaction_data)
           emits.push(['newcctransaction', transaction_data])
           emits.push(['newtransaction', transaction_data])
         }
@@ -555,10 +553,9 @@ Scanner.prototype.parse_cc = function (err, callback) {
 }
 
 Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk) {
-  console.log('parse_cc_tx() - transaction_data = ', transaction_data)
   if (transaction_data.iosparsed && transaction_data.ccdata && transaction_data.ccdata.length) {
     var assets = get_assets_outputs(transaction_data)
-    console.log('parse_cc_tx(): assets.length = ', assets.length, ', assets = ', assets)
+    console.log('parse_cc_tx(): tx.iosparsed = true, txid = ' + transaction_data.txid + ', assets.length = ', assets.length, ', assets = ', assets)
     var index = 0
     assets.forEach(function (asset, out_index) {
       // logger.debug('found cc asset '+JSON.stringify(asset)+' in tx: '+transaction_data.txid)
@@ -1268,10 +1265,9 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
           did_work.ccparsed = true
         }
         if (did_work && all_fixed) {
-          console.log('parse_new_mempool_transaction() -> emit(newtransaction), raw_transaction_data.colored = '+ raw_transaction_data.colored + ', process.env.ROLE = ' + process.env.ROLE)
+          console.log('parse_new_mempool_transaction() -> emit(newtransaction), process.env.ROLE = ' + process.env.ROLE + ', txid = ' + raw_transaction_data.txid)
           emits.push(['newtransaction', raw_transaction_data])
           if (raw_transaction_data.colored) {
-            console.log('parse_new_mempool_transaction() -> emit(newcctransaction), process.env.ROLE = ' + process.env.ROLE)
             emits.push(['newcctransaction', raw_transaction_data])
           }
         }
