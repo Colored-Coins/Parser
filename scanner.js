@@ -600,9 +600,23 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_tr
       }
     })
 
-    //assets.length is the maximum index output which has an asset. we here override any previous assets array which may were mistakinly attached to following outputs.
+    //assets.length is the maximum index output which has an asset. we here override any previous assets array which may were mistakenly attached to following outputs.
     for (var i = index + 1; i < transaction_data.vout.length; i++) {
+      //transactions
       transaction_data.vout[i].assets = []
+      //utxos
+      var conditions = {
+        txid: transaction_data.txid,
+        index: i
+      }
+      utxo_bulk.find(conditions).update({$set: {
+        assets: []
+      }})
+      //utxos-assets
+      var utxos_conditions = {
+        utxo: transaction_data.txid + ':' + i
+      }
+      assets_utxos_bulk.find(utxos_conditions).remove()
     }
   }
 }
