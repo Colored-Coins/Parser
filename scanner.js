@@ -599,8 +599,10 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_tr
         transaction_data.vout[out_index].assets = []
       }
     })
+
+    //assets.length is the maximum index output which has an asset. we here override any previous assets array which may were mistakinly attached to following outputs.
     for (var i = index + 1; i < transaction_data.vout.length; i++) {
-      transaction_data.vout[i].assets = transaction_data.vout[i].assets || []
+      transaction_data.vout[i].assets = []
     }
   }
 }
@@ -1355,7 +1357,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     raw_transaction_data = to_discrete(raw_transaction_data)
     self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, close_raw_transactions_bulk, emits, function (err, did_work, iosparsed, ccparsed) {
       if (err) return cb(err)
-      if (did_work && did_work.any) {
+      if (did_work) {
         new_mempool_txs.push({
           txid: raw_transaction_data.txid,
           iosparsed: iosparsed,
@@ -1404,6 +1406,14 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
         emits.forEach(function (emit) {
           self.emit(emit[0], emit[1])
         })
+
+        //TODO - delete
+        if (txids.length < 5) {
+          txids.forEach(function (txid) {
+            console.log('parse_mempool_cargo inserted to DB, txid: '+txid)
+          })
+        }  
+
         callback()
       })
     })
@@ -1585,7 +1595,15 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         }
       }
       self.once('kill', end_func)
-      self.mempool_cargo.push(new_txids, function () {
+
+      //TODO - delete 
+      if (new_txids.length < 5) {
+        new_txids.forEach(function (txid) {
+          console.log('mempool_cargo.push('+txid+')')
+        })
+      }
+
+      self.mempool_cargo.push(new_txids, function () {      
         if (!--cargo_size) {
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
           self.to_revert = self.to_revert.concat(db_txids)
@@ -1602,6 +1620,14 @@ Scanner.prototype.parse_new_mempool = function (callback) {
               }
             }
           })
+
+          //TODO - delete 
+          if (new_txids.length < 5) {
+            new_txids.forEach(function (txid) {
+              console.log('mempool_cargo calld back, txid: '+txid)
+            })
+          }  
+
           end_func()
         }
       })
