@@ -26,6 +26,6 @@
     "cc-get-assets-outputs": "^0.1.0",
     "cc-transaction": "^0.4.1",
     "lodash": "^3.10.1",
-    "mongoose": "4.1.12"
+    "mongoose": "~4.4.3"
   }
 }
