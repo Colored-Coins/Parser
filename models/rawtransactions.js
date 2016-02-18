@@ -48,7 +48,7 @@ module.exports = function (mongoose, properties) {
   var payment = new mongoose.Schema({
     input: Number,
     output: Number,
-    amountOfUnits: Number,
+    amount: Number,
     range: Boolean,
     percent: Boolean
   }, {_id: false })
