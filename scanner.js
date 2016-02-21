@@ -1170,7 +1170,7 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
   delete raw_transaction_data.time
   raw_transaction_bulk.find(conditions).upsert().updateOne({
     $setOnInsert: raw_transaction_data,
-    $set: raw_transaction_data
+    $set: update
   })
 
   return out
