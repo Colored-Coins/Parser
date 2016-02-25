@@ -354,6 +354,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
     // var next_block = raw_block_data.height
 
     var close_blocks = function (err, empty) {
+      console.timeEnd('fix_blocks: execute_bulks_parallel - #2')
       if (debug) console.timeEnd('vin_insert_bulks')
       if (err) return callback(err)
       emits.forEach(function (emit) {
@@ -370,7 +371,11 @@ Scanner.prototype.fix_blocks = function (err, callback) {
         })
       })
       if (!bulk.length) return callback(err)
-      bulk.execute(callback)
+      console.time('fix_blocks: execute_bulks_parallel - #3')
+      bulk.execute(function (err) {
+        console.timeEnd('fix_blocks: execute_bulks_parallel - #3')
+        callback()
+      })
     }
 
     var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
@@ -410,7 +415,6 @@ Scanner.prototype.fix_blocks = function (err, callback) {
             }
           })
           if (!transaction_data.colored && all_fixed) {
-            console.log('fix_blocks() -> emit(newtransaction), .colored = ' + transaction_data.colored + 'process.env.ROLE = ' + process.env.ROLE + ', txid = ' + transaction_data.txid)
             emits.push(['newtransaction', transaction_data])
           }
           cb()
@@ -419,9 +423,12 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       function (err) {
         if (err) return callback(err)
         if (debug) console.time('vin_insert_bulks')
+        console.time('fix_blocks: execute_bulks_parallel - #1')
         execute_bulks_parallel([utxo_bulk, raw_transaction_bulk], function (err) {
+          console.timeEnd('fix_blocks: execute_bulks_parallel - #1')
           if (err) return callback(err)
-          //ensure that transactions are flagged as iosparsed only if their corresponding vin's utxos are marked as used (within utxo_bulk)
+          //ensure   that transactions are flagged as iosparsed only if their corresponding vin's utxos are marked as used (within utxo_bulk)
+          console.time('fix_blocks: execute_bulks_parallel - #2')
           execute_bulks([close_raw_transactions_bulk], close_blocks)
         })
       })
@@ -457,7 +464,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
     // var next_block = raw_block_data.height
     var did_work = false
     var close_blocks = function (err, empty) {
-      console.log('parse_cc - close_blocks(): emits.length = ', emits.length, ', emits = ', emits)
+      if (debug) console.timeEnd('parse_cc_bulks #2')
       if (debug) console.timeEnd('parse_cc_bulks')
       if (err) return callback(err)
       emits.forEach(function (emit) {
@@ -537,16 +544,18 @@ Scanner.prototype.parse_cc = function (err, callback) {
               ccparsed: true
             }
           })
-          console.log('parse_cc() -> after parse_cc_tx() emit(newtransaction), assets = ', _.map(transaction_data.vout, function (output) { return (typeof output.assets === 'undefined')? 'undefined' : _.map(output.assets, function (asset) { return asset.assetId}) }),   ', transaction_data = ', transaction_data)
           emits.push(['newcctransaction', transaction_data])
           emits.push(['newtransaction', transaction_data])
         }
       })
       // logger.debug('executing vins bulks')
       if (debug) console.time('parse_cc_bulks')
+      if (debug) console.time('parse_cc_bulks #1')
       execute_bulks_parallel([utxo_bulk, raw_transaction_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk], function (err) {
+        if (debug) console.timeEnd('parse_cc_bulks #1')
         if (err) return callback(err)
         //ensure that transactions are marked as ccparsed, only after applying all related bulks (e.g. assets are written into their corresponding utxos)
+        if (debug) console.timeEnd('parse_cc_bulks #2')
         execute_bulks([close_raw_transactions_bulk], close_blocks)
       })
     })
@@ -822,9 +831,9 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
         return callback(err)
       }
     }
-    if (debug) console.time('vout_parse_bulks')
+    if (debug) console.time('vout_parse_bulks #1')
     execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, raw_transaction_bulk], function (err) {
-      if (debug) console.timeEnd('vout_parse_bulks')
+      if (debug) console.timeEnd('vout_parse_bulks #1')
       if (err) return callback(err)
       raw_block_data.txinserted = true
       // self.emit('newblock', raw_block_data) //TODO: add total sent
@@ -834,7 +843,9 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
       }
       blocks_bulk.find(conditions).upsert().updateOne(raw_block_data)
 
+      if (debug) console.time('vout_parse_bulks #2 (blocks_bulk)')
       blocks_bulk.execute(function (err) {
+        if (debug) console.timeEnd('vout_parse_bulks #2 (blocks_bulk)')
         if (err) return callback(err)
         self.set_last_hash(raw_block_data.hash)
         self.set_last_block(raw_block_data.height)
@@ -1267,7 +1278,6 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
           did_work = true
         }
         if (did_work && all_fixed) {
-          console.log('parse_new_mempool_transaction() -> emit(newtransaction), txid = ' + raw_transaction_data.txid)
           emits.push(['newtransaction', raw_transaction_data])
           if (raw_transaction_data.colored) {
             emits.push(['newcctransaction', raw_transaction_data])
@@ -1351,6 +1361,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       return cb()
     }
     raw_transaction_data = to_discrete(raw_transaction_data)
+    console.time('parse_mempool_cargo - parse_new_mempool_transaction')
     self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, close_raw_transactions_bulk, emits, function (err, did_work, iosparsed, ccparsed) {
       if (err) return cb(err)
       if (did_work) {
@@ -1365,6 +1376,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     })
   },
   function (err) {
+    console.timeEnd('parse_mempool_cargo - parse_new_mempool_transaction')
     if (err) {
       if ('code' in err && err.code === -5) {
         console.error('Can\'t find tx.')
@@ -1374,9 +1386,13 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       }
     }
     console.log('parsing mempool bulks')
+    console.time('parsing mempool bulks #1')
     execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_utxos_bulk, assets_transactions_bulk, assets_addresses_bulk, raw_transaction_bulk], function (err) {
+      console.timeEnd('parsing mempool bulks #1')
       if (err) return handleError(err)
+      console.time('parsing mempool bulks #2')
       execute_bulks([close_raw_transactions_bulk], function (err) {
+        console.timeEnd('parsing mempool bulks #2')
         if (err) return handleError(err)
         if (self.mempool_txs) {
           new_mempool_txs.forEach(function (mempool_tx) {
