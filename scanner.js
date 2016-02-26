@@ -464,7 +464,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
     // var next_block = raw_block_data.height
     var did_work = false
     var close_blocks = function (err, empty) {
-      if (debug) console.timeEnd('parse_cc_bulks #2')
+      if (debug && did_work) console.timeEnd('parse_cc_bulks #2')
       if (debug) console.timeEnd('parse_cc_bulks')
       if (err) return callback(err)
       emits.forEach(function (emit) {
@@ -555,7 +555,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
         if (debug) console.timeEnd('parse_cc_bulks #1')
         if (err) return callback(err)
         //ensure that transactions are marked as ccparsed, only after applying all related bulks (e.g. assets are written into their corresponding utxos)
-        if (debug) console.timeEnd('parse_cc_bulks #2')
+        if (debug) console.time('parse_cc_bulks #2')
         execute_bulks([close_raw_transactions_bulk], close_blocks)
       })
     })
