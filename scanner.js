@@ -597,6 +597,13 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_tr
         transaction_data.vout[out_index].assets = []
       }
     })
+
+    for (var i = index + 1; i < transaction_data.vout.length; i++) {
+      transaction_data.vout[i].assets = []
+      utxo_bulk.find(conditions).updateOne({$set: {
+        assets: []
+      }})
+    }
   }
 }
 
