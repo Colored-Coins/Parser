@@ -595,6 +595,9 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_tr
         })
       } else {
         transaction_data.vout[out_index].assets = []
+        utxo_bulk.find(conditions).updateOne({$set: {
+          assets: []
+        }})
       }
     })
 
