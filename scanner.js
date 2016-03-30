@@ -595,7 +595,7 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_tr
         })
       } else {
         transaction_data.vout[out_index].assets = []
-        utxo_bulk.find(conditions).updateOne({$set: {
+        utxo_bulk.find({txid: transaction_data.txid, index: out_index}).updateOne({$set: {
           assets: []
         }})
       }
@@ -603,7 +603,7 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_tr
 
     for (var i = index + 1; i < transaction_data.vout.length; i++) {
       transaction_data.vout[i].assets = []
-      utxo_bulk.find(conditions).updateOne({$set: {
+      utxo_bulk.find({txid: transaction_data.txid, index: i}).updateOne({$set: {
         assets: []
       }})
     }
