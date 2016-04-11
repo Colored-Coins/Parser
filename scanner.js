@@ -282,6 +282,7 @@ Scanner.prototype.revert_vin = function (tx, utxo_bulk, addresses_transactions_b
 }
 
 Scanner.prototype.revert_vout = function (txid, vouts, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, callback) {
+  var self = this
   if (!vouts || !vouts.length) return callback(null, [])
   // var to_remove = []
   var outputs = vouts.map(function (vout) {
