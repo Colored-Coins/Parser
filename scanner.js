@@ -331,7 +331,7 @@ Scanner.prototype.revert_vout = function (txid, vouts, utxo_bulk, addresses_tran
     index: 1,
     usedTxid: 1
   }
-  RawTransactions.find(conditions, projection).lean().exec(function (err, used_txos) {
+  self.RawTransactions.find(conditions, projection).lean().exec(function (err, used_txos) {
     if (err) return callback(err)
     var txids = []
     used_txos.forEach(function (used) {
