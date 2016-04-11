@@ -1,6 +1,6 @@
 {
   "name": "cc-block-parser",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Parse the blockchain and build a Colored-Coins",
   "main": "scanner.js",
   "scripts": {
@@ -22,9 +22,9 @@
   "dependencies": {
     "async": "^1.4.2",
     "bitcoin-async": "^1.0.0",
-    "cc-assetid-encoder": "git+https://github.com/Colored-Coins/AssetId.git#aggregatable_assets",
-    "cc-get-assets-outputs": "git+https://github.com/Colored-Coins/cc-get-assets-outputs.git#aggregatable_assets",
-    "cc-transaction": "git+https://github.com/Colored-Coins/Transaction.git#aggregatable_assets",
+    "cc-assetid-encoder": "^0.6.0",
+    "cc-get-assets-outputs": "^1.0.0",
+    "cc-transaction": "^1.0.0",
     "lodash": "^3.10.1",
     "mongoose": "~4.4.3"
   }
