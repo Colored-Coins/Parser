@@ -145,18 +145,26 @@ Scanner.prototype.revert_block = function (block_height, callback) {
     // logger.debug('reverting '+block_data.tx.length+' txs.')
     var txids = []
     var colored_txids = []
-    async.eachSeries(block_data.tx.reverse(), function (txid, cb) {
+    async.mapSeries(block_data.tx.reverse(), function (txid, cb) {
       txids.push(txid)
-      self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, function (err, colored) {
+      self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, function (err, colored, revert_flags_txids) {
         if (err) return cb(err)
         if (colored) {
           colored_txids.push(txid)
         }
-        cb()
+        cb(null, revert_flags_txids)
       })
     },
-    function (err) {
+    function (err, revert_flags_txids) {
       if (err) return callback(err)
+      revert_flags_txids = [].concat.apply([], revert_flags_txids)
+      var reverted_flag_txids = []
+      revert_flags_txids.forEach(function (revert_flags_txid) {
+        if (!~reverted_flag_txids.indexOf(revert_flags_txid)) {
+          reverted_flag_txids.push(revert_flags_txid)
+          raw_transaction_bulk.find({txid: revert_flags_txid}).updateOne($set: {{iosparsed: false, ccparsed: false}})
+        }
+      })
       // logger.debug('executing bulks')
       execute_bulks([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
         if (err) return callback(err)
@@ -204,16 +212,15 @@ Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_
       },
       function (cb) {
         // logger.debug('reverting vout')
-        self.revert_vout(tx.txid, tx.vout, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk)
+        self.revert_vout(tx.txid, tx.vout, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, cb)
         // logger.debug('vout reverted')
-        cb()
       }
     ],
-    function (err) {
+    function (err, txids) {
       if (err) return callback(err)
       raw_transaction_bulk.find(conditions).remove()
       // logger.debug('tx '+txid+' reverted.')
-      callback(null, tx.colored)
+      callback(null, tx.colored, txids)
     })
   })
 }
@@ -274,10 +281,10 @@ Scanner.prototype.revert_vin = function (tx, utxo_bulk, addresses_transactions_b
   })
 }
 
-Scanner.prototype.revert_vout = function (txid, vouts, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk) {
-  if (!vouts || !vouts.length) return false
+Scanner.prototype.revert_vout = function (txid, vouts, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, callback) {
+  if (!vouts || !vouts.length) return callback(null, [])
   // var to_remove = []
-  vouts.forEach(function (vout) {
+  var outputs = vouts.map(function (output) {
     var conditions = {
       txid: txid,
       index: vout.n
@@ -310,6 +317,29 @@ Scanner.prototype.revert_vout = function (txid, vouts, utxo_bulk, addresses_tran
         assets_utxos_bulk.find(asset_utxo).remove()
       })
     }
+    return {
+      txid: txid,
+      index: output.n
+    }
+  })
+  var conditions = {
+    used: true,
+    $or: outputs
+  }
+  var projection = {
+    txid: 1,
+    index: 1,
+    usedTxid: 1
+  }
+  RawTransactions.find(conditions, projection).lean().exec(function (err, used_txos) {
+    if (err) return callback(err)
+    var txids = []
+    used_txos.forEach(function (used) {
+      if (!~txids.indexOf(used.usedTxid)) {
+        txids.push(used.usedTxid)
+      }
+    })
+    return callback(null, txids)
   })
 }
 
@@ -1003,10 +1033,6 @@ var add_insert_update_to_bulk = function (raw_transaction_data, vins, utxos) {
   utxos.forEach(function (utxo) {
     // logger.debug('searching: '+utxo.txid+':'+utxo.index)
     var vin = vins[utxo.txid + ':' + utxo.index]
-    // var conditions = {
-    //   txid: utxo.txid,
-    //   index: utxo.index
-    // }
 
     vin.previousOutput = utxo.scriptPubKey
     vin.assets = utxo.assets || []
@@ -1015,11 +1041,6 @@ var add_insert_update_to_bulk = function (raw_transaction_data, vins, utxos) {
     delete vins[utxo.txid + ':' + utxo.index]
   })
 
-  // var temp = 0
-  // for (var vinkey in vins) {
-  //   vin = vins[vinkey]
-  //   // console.error('!!!! NOT FOUND '+vin.txid+':'+vin.vout+' !!!!')
-  // }
   if (Object.keys(vins).length) {
     raw_transaction_data.tries = raw_transaction_data.tries || 0
     raw_transaction_data.tries++
@@ -1038,7 +1059,6 @@ var add_insert_update_to_bulk = function (raw_transaction_data, vins, utxos) {
 }
 
 var add_remove_to_bulk = function (utxos, utxos_bulk, block_height, txid) {
-  var is_utxos_bulk = false
   utxos.forEach(function (utxo) {
     utxos_bulk.find({ _id: utxo._id}).updateOne({
       $set: {
@@ -1047,9 +1067,7 @@ var add_remove_to_bulk = function (utxos, utxos_bulk, block_height, txid) {
         usedTxid: txid
       }
     })
-    is_utxos_bulk = true
   })
-  return is_utxos_bulk
 }
 
 Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk) {
@@ -1445,16 +1463,16 @@ Scanner.prototype.revert_txids = function (callback) {
       var regular_txids = []
       var colored_txids = []
 
-      async.each(txids, function (txid, cb) {
+      async.map(txids, function (txid, cb) {
         bitcoin_rpc.cmd('getrawtransaction', [txid], function (err, raw_transaction_data) {
           if (err || !raw_transaction_data || !raw_transaction_data.confirmations) {
             regular_txids.push(txid)
-            self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, function (err, colored) {
+            self.revert_tx(txid, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk, function (err, colored, revert_flags_txids) {
               if (err) return cb(err)
               if (colored) {
                 colored_txids.push(txid)
               }
-              cb()
+              cb(null, revert_flags_txids)
             })
           } else {
             console.log('found tx that do not need to revert', txid)
@@ -1467,12 +1485,20 @@ Scanner.prototype.revert_txids = function (callback) {
             // parse tx (first parse)
             // if not iosfixed - set block as not fixed
             // if colored and not cc_parsed - set block as not cc_parsed
-            cb()
+            cb(null, [])
           }
         })
       },
-      function (err) {
+      function (err, revert_flags_txids) {
         if (err) return cb(err)
+        revert_flags_txids = [].concat.apply([], revert_flags_txids)
+        var reverted_flag_txids = []
+        revert_flags_txids.forEach(function (revert_flags_txid) {
+          if (!~reverted_flag_txids.indexOf(revert_flags_txid)) {
+            reverted_flag_txids.push(revert_flags_txid)
+            raw_transaction_bulk.find({txid: revert_flags_txid}).updateOne($set: {{iosparsed: false, ccparsed: false}})
+          }
+        })
         // logger.debug('executing bulks')
         execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
           if (err) return cb(err)
