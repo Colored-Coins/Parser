@@ -162,7 +162,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
       revert_flags_txids.forEach(function (revert_flags_txid) {
         if (!~reverted_flag_txids.indexOf(revert_flags_txid)) {
           reverted_flag_txids.push(revert_flags_txid)
-          raw_transaction_bulk.find({txid: revert_flags_txid}).updateOne($set: {{iosparsed: false, ccparsed: false}})
+          raw_transaction_bulk.find({txid: revert_flags_txid}).updateOne({$set: {iosparsed: false, ccparsed: false}})
         }
       })
       // logger.debug('executing bulks')
@@ -1496,7 +1496,7 @@ Scanner.prototype.revert_txids = function (callback) {
         revert_flags_txids.forEach(function (revert_flags_txid) {
           if (!~reverted_flag_txids.indexOf(revert_flags_txid)) {
             reverted_flag_txids.push(revert_flags_txid)
-            raw_transaction_bulk.find({txid: revert_flags_txid}).updateOne($set: {{iosparsed: false, ccparsed: false}})
+            raw_transaction_bulk.find({txid: revert_flags_txid}).updateOne({$set: {iosparsed: false, ccparsed: false}})
           }
         })
         // logger.debug('executing bulks')
