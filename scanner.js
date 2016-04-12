@@ -158,6 +158,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
     function (err, revert_flags_txids) {
       if (err) return callback(err)
       revert_flags_txids = [].concat.apply([], revert_flags_txids)
+      console.log('revert flags txids:', revert_flags_txids)
       var reverted_flag_txids = []
       revert_flags_txids.forEach(function (revert_flags_txid) {
         if (!~reverted_flag_txids.indexOf(revert_flags_txid)) {
@@ -328,11 +329,10 @@ Scanner.prototype.revert_vout = function (txid, vouts, utxo_bulk, addresses_tran
     $or: outputs
   }
   var projection = {
-    txid: 1,
-    index: 1,
+    _id: 0,
     usedTxid: 1
   }
-  self.RawTransactions.find(conditions, projection).lean().exec(function (err, used_txos) {
+  self.Utxo.find(conditions, projection).lean().exec(function (err, used_txos) {
     if (err) return callback(err)
     var txids = []
     used_txos.forEach(function (used) {
@@ -1493,6 +1493,7 @@ Scanner.prototype.revert_txids = function (callback) {
       function (err, revert_flags_txids) {
         if (err) return cb(err)
         revert_flags_txids = [].concat.apply([], revert_flags_txids)
+        console.log('revert flags txids:', revert_flags_txids)
         var reverted_flag_txids = []
         revert_flags_txids.forEach(function (revert_flags_txid) {
           if (!~reverted_flag_txids.indexOf(revert_flags_txid)) {
