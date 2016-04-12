@@ -158,14 +158,9 @@ Scanner.prototype.revert_block = function (block_height, callback) {
     function (err, revert_flags_txids) {
       if (err) return callback(err)
       revert_flags_txids = [].concat.apply([], revert_flags_txids)
+      revert_flags_txids = _.uniq(revert_flags_txids)
       console.log('revert flags txids:', revert_flags_txids)
-      var reverted_flag_txids = []
-      revert_flags_txids.forEach(function (revert_flags_txid) {
-        if (!~reverted_flag_txids.indexOf(revert_flags_txid)) {
-          reverted_flag_txids.push(revert_flags_txid)
-          raw_transaction_bulk.find({txid: revert_flags_txid}).updateOne({$set: {iosparsed: false, ccparsed: false}})
-        }
-      })
+      raw_transaction_bulk.find({txid: {$in: revert_flags_txids }}).update({$set: {iosparsed: false, ccparsed: false}})
       // logger.debug('executing bulks')
       execute_bulks([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
         if (err) return callback(err)
@@ -1493,14 +1488,9 @@ Scanner.prototype.revert_txids = function (callback) {
       function (err, revert_flags_txids) {
         if (err) return cb(err)
         revert_flags_txids = [].concat.apply([], revert_flags_txids)
+        revert_flags_txids = _.uniq(revert_flags_txids)
         console.log('revert flags txids:', revert_flags_txids)
-        var reverted_flag_txids = []
-        revert_flags_txids.forEach(function (revert_flags_txid) {
-          if (!~reverted_flag_txids.indexOf(revert_flags_txid)) {
-            reverted_flag_txids.push(revert_flags_txid)
-            raw_transaction_bulk.find({txid: revert_flags_txid}).updateOne({$set: {iosparsed: false, ccparsed: false}})
-          }
-        })
+        raw_transaction_bulk.find({txid: {$in: revert_flags_txids }}).update({$set: {iosparsed: false, ccparsed: false}})
         // logger.debug('executing bulks')
         execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
           if (err) return cb(err)
