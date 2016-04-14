@@ -98,6 +98,22 @@ module.exports = function (mongoose, properties) {
     'iosparsed': 1
   })
 
+  RawTransactionsSchema.index({
+    'blockheight': 1,
+    'tries': 1
+  })
+
+  RawTransactionsSchema.index({
+    'blockheight': 1,
+    'ccparsed': 1
+  })
+
+  RawTransactionsSchema.index({
+    'blockheight': 1,
+    'iosparsed': 1,
+    'ccparsed': 1
+  })
+
   var round = function (doc) {
     if (doc.fee) doc.fee = Math.round(doc.fee)
     if (doc.totalsent) doc.totalsent = Math.round(doc.totalsent)
