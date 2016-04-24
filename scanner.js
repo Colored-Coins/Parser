@@ -1,6 +1,3 @@
-var casimir = global.casimir
-var db = casimir.db
-
 var async = require('async')
 var util = require('util')
 var events = require('events')
