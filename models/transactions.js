@@ -32,12 +32,12 @@ module.exports = function (sequelize, DataTypes) {
     time: {
       type: DataTypes.BIGINT
     },
-    // fee: {
-    //   type: DataTypes.BIGINT
-    // },
-    // totalsent: {
-    //   type: DataTypes.BIGINT
-    // },
+    fee: {
+      type: DataTypes.BIGINT
+    },
+    totalsent: {
+      type: DataTypes.BIGINT
+    },
     overflow: {
       type: DataTypes.BOOLEAN
     },
@@ -55,6 +55,10 @@ module.exports = function (sequelize, DataTypes) {
     ccparsed: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
+    },
+    tries: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0
     }
   },
   {
@@ -75,13 +79,6 @@ module.exports = function (sequelize, DataTypes) {
       confirmations: function () {
         var properties = Transactions.properties
         return (properties && properties.last_block && this.blockheight > -1) ? (properties.last_block - this.blockheight + 1) : 0
-      }
-    },
-    instanceMethods: {
-      toJSON: function () {
-        var raw_transaction_data = this.get({plain: true})
-        calc_fee(raw_transaction_data)
-        return raw_transaction_data
       }
     },
     indexes: [
@@ -119,33 +116,11 @@ module.exports = function (sequelize, DataTypes) {
     timestamps: false
   })
 
-  return Transactions
-}
+  // Transactions.beforeFind(function (options) {
+  //   console.log('beforeFind!')
+  // })
 
-var calc_fee = function (raw_transaction_data) {
-  var fee = 0
-  var totalsent = 0
-  var coinbase = false
-  if ('vin' in raw_transaction_data && raw_transaction_data.vin) {
-    raw_transaction_data.vin.forEach(function (vin) {
-      if ('coinbase' in vin && vin.coinbase) {
-        coinbase = true
-      }
-      if (vin.value) {
-        fee += vin.value
-      }
-    })
-  }
-  if (raw_transaction_data.vout) {
-    raw_transaction_data.vout.forEach(function (vout) {
-      if ('value' in vout && vout.value) {
-        fee -= vout.value
-        totalsent += vout.value
-      }
-    })
-  }
-  raw_transaction_data.totalsent = totalsent
-  raw_transaction_data.fee = coinbase ? 0 : fee
+  return Transactions
 }
 
 // module.exports = function (mongoose, properties) {

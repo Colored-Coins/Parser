@@ -29,6 +29,13 @@ module.exports = function (sequelize, DataTypes) {
     coinbase: {
       type: DataTypes.STRING(20)
     },
+    fixed: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    value: {
+      type: DataTypes.BIGINT
+    },
     sequence: {
       type: DataTypes.BIGINT
     }
