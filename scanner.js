@@ -831,9 +831,8 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
   if (coinbase) {
     return end([])
   }
-
   self.Transactions.findAll({
-    where: conditions,
+    where: {$or: conditions},
     include: [
       { model: self.Inputs, as: 'vin' },
       { model: self.Outputs, as: 'vout' }
