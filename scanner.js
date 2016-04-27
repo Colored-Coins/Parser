@@ -61,9 +61,10 @@ function Scanner (settings, db) {
   //   })
   // }
 
-  // self.mempool_cargo = async.cargo(function (tasks, callback) {
-  //   self.parse_mempool_cargo(tasks, callback)
-  // }, 500)
+  self.mempool_cargo = async.cargo(function (tasks, callback) {
+    console.log('async.cargo() - parse_mempool_cargo')
+    self.parse_mempool_cargo(tasks, callback)
+  }, /*500*/ 2)
 }
 
 util.inherits(Scanner, events.EventEmitter)
@@ -143,7 +144,6 @@ Scanner.prototype.get_next_block_to_fix = function (limit, callback) {
     attributes: ['height', 'hash'],
     limit: limit,
     order: [['height', 'ASC']],
-    logging: (debug && console.log),
     raw: true
   }).then(function (blocks) { 
     console.log('get_next_block_to_fix - found ' + blocks.length + ' blocks')
@@ -164,8 +164,7 @@ Scanner.prototype.get_next_new_block = function (callback) {
   self.Blocks.findOne({
     where: { txsinserted: true},
     attributes: ['height', 'hash'],
-    order: [['height', 'DESC']],
-    logging: (debug && console.log)
+    order: [['height', 'DESC']]
   }).then(function (block) {
     if (block) {
       set_last_block(block.height)
@@ -260,7 +259,7 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
     if (!sql_query.length) return cb()
     sql_query = sql_query.join(';\n')
     self.sequelize.transaction(function (sql_transaction) {
-      return self.sequelize.query(sql_query, {transaction: sql_transaction, logging: (debug && console.log) })
+      return self.sequelize.query(sql_query, {transaction: sql_transaction})
         .then(function () { cb() })
         .catch(cb)
     })
@@ -298,9 +297,11 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
       callback()
     }
 
-    self.sequelize.query(sql_query, {logging: (debug && console.log)})
-      .then(close_block)
-      .catch(callback)
+    self.sequelize.transaction(function (sql_transaction) {
+      return self.sequelize.query(sql_query, {transaction: sql_transaction})
+        .then(close_block)
+        .catch(callback)
+    })
   })
 }
 
@@ -338,6 +339,7 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
     time: raw_transaction_data.time
   }
 
+  // put this query first because of outputs and inputs foreign key constraints, validate trasnaction in DB
   sql_query.unshift(squel.insert()
     .into('transactions')
     .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations']}))
@@ -354,6 +356,13 @@ var calc_block_reward = function (block_height) {
     divistions--
   }
   return reward
+}
+
+var get_block_height = function (blockhash, callback) {
+  bitcoin_rpc.cmd('getblock', [blockhash], function (err, block) {
+    if (err) return callback(err)
+    callback(null, block.height)
+  })
 }
 
 Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, sql_query) {
@@ -417,7 +426,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
           .set('address', address)
           .set('output_id',
             squel.select().field('id').from('outputs').where('txid = \'' +  new_utxo.txid + '\' AND n = ' + new_utxo.n))
-          .toString() + ' on conflict (address, "output_id") do nothing')
+          .toString() + ' on conflict (address, output_id) do nothing')
       })
     }
   })
@@ -432,6 +441,20 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
   })
 
   return out
+}
+
+Scanner.prototype.scan_mempol_only = function (err) {
+  var self = this
+  // logger.debug('scanning mempool')
+  if (err) {
+    console.error(err)
+    return self.scan_mempol_only()
+  }
+  self.parse_new_mempool(function (err) {
+    setTimeout(function () {
+      self.scan_mempol_only(err)
+    }, 500)
+  })
 }
 
 Scanner.prototype.fix_blocks = function (err, callback) {
@@ -479,8 +502,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       self.Blocks.update(
         update,
         {
-          where: conditions,
-          logging: (debug && console.log)
+          where: conditions
         }
       ).then(function (res) {
         console.log('fix_blocks - close_blocks - success')
@@ -505,7 +527,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
           if (err) return cb(err)
           sql_query = sql_query.join(';\n')
           self.sequelize.transaction(function (sql_transaction) {
-            return self.sequelize.query(sql_query, {transaction: sql_transaction, logging: (debug && console.log)})
+            return self.sequelize.query(sql_query, {transaction: sql_transaction})
               .then(function () {
                 if (!transaction_data.colored && all_fixed) {
                   emits.push(['newtransaction', transaction_data])
@@ -583,8 +605,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
       self.Blocks.update(
         update,
         {
-          where: conditions,
-          logging: (debug && console.log)
+          where: conditions
         }
       ).then(function (res) {
         console.log('parse_cc - close_blocks - success')
@@ -622,7 +643,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
         emits.push(['newcctransaction', transaction_data])
         emits.push(['newtransaction', transaction_data])
         self.sequelize.transaction(function (sql_transaction) {
-          return self.sequelize.query(sql_query, {transaction: sql_transaction, logging: (debug && console.log)})
+          return self.sequelize.query(sql_query, {transaction: sql_transaction})
             .then(function () { cb() })
             .catch(cb)
         })
@@ -674,7 +695,7 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
         .set('assetId', asset.assetId)
         .set('output_id', transaction_data.vout[out_index].id)
         .set('index_in_output', index_in_output)
-        .toString() + ' on conflict ("assetId", "output_id") do nothing')
+        .toString() + ' on conflict ("assetId", output_id) do nothing')
       if (asset.amount && transaction_data.vout[out_index].scriptPubKey && transaction_data.vout[out_index].scriptPubKey.addresses) {
         transaction_data.vout[out_index].scriptPubKey.addresses.forEach(function (address) {
           sql_query.push(squel.insert()
@@ -705,8 +726,7 @@ Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_
         ]}
       ]}
     ],
-    order: [['blockheight', 'ASC']],
-    logging: (debug && console.log)
+    order: [['blockheight', 'ASC']]
   }).then(function (transactions) {
     console.log('get_need_to_cc_parse_transactions_by_blocks - transactions.length = ', transactions.length)
     callback(null, transactions)
@@ -733,8 +753,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
       ['tries', 'ASC'],
       [{model: this.Inputs, as: 'vin'}, 'input_index', 'ASC'],
       [{model: this.Outputs, as: 'vout'}, 'n', 'ASC']
-    ],
-    logging: (debug && console.log)
+    ]
   }).then(function (transactions) {
     console.log('get_need_to_fix_transactions_by_blocks - transactions.length = ', transactions.length)
     callback(null, transactions)
@@ -837,7 +856,8 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
       { model: self.Inputs, as: 'vin' },
       { model: self.Outputs, as: 'vout' }
     ],
-    logging: (debug && console.log)
+    logging: console.log,
+    benchmark: true
   })
   .then(end)
   .catch(callback)
@@ -916,7 +936,7 @@ Scanner.prototype.get_next_block_to_cc_parse = function (limit, callback) {
     'hash',
     'txsparsed'
   ]
-  this.Blocks.findAll({where: conditions, attributes: attributes, order: [['height', 'ASC']], limit: limit, logging: (debug && console.log), raw: true})
+  this.Blocks.findAll({where: conditions, attributes: attributes, order: [['height', 'ASC']], limit: limit, raw: true})
     .then(function (blocks) { callback(null, blocks) })
     .catch(function (e) {
       console.error('get_next_block_to_cc_parse: e = ', e)
@@ -924,14 +944,8 @@ Scanner.prototype.get_next_block_to_cc_parse = function (limit, callback) {
     })
 }
 
-var get_block_height = function (blockhash, callback) {
-  bitcoin_rpc.cmd('getblock', [blockhash], function (err, block) {
-    if (err) return callback(err)
-    callback(null, block.height)
-  })
-}
-
-Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data, raw_transaction_bulk, sql_query, emits, callback) {
+Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data, sql_query, emits, callback) {
+  console.log('parse_new_mempool_transaction - txid = ', raw_transaction_data.txid)
   var self = this
   var transaction_data
   var did_work = false
@@ -966,7 +980,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         blockheight = raw_transaction_data.blockheight || -1
         cb(null, blockheight)
       } else {
-        // logger.debug('parsing new tx: '+raw_transaction_data.txid)
+        logger.debug('parse_new_mempool_transaction: did not find in DB, parsing new tx: ' + raw_transaction_data.txid)
         did_work = true
         if (blockheight === -1 && raw_transaction_data.blockhash) {
           get_block_height(raw_transaction_data.blockhash, cb)
@@ -977,6 +991,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       }
     },
     function (l_blockheight, cb) {
+      logger.debug('parse_new_mempool_transaction: l_blockheight = ' + l_blockheight)
       blockheight = l_blockheight
       if (transaction_data) return cb()
       if (raw_transaction_data.time) {
@@ -989,8 +1004,8 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       }
       raw_transaction_data.blockheight = blockheight
 
-      self.parse_vin(raw_transaction_data, block_height, sql_query)
-      self.parse_vout(raw_transaction_data, block_height, sql_query)
+      self.parse_vin(raw_transaction_data, blockheight, sql_query)
+      self.parse_vout(raw_transaction_data, blockheight, sql_query)
       raw_transaction_data.iosparsed = false
       raw_transaction_data.ccparsed = false
       cb()
@@ -1020,18 +1035,11 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
           }
         }
         if (did_work) {
-          iosparsed = raw_transaction_data.iosparsed
-          ccparsed = raw_transaction_data.ccparsed
-          raw_transaction_data.iosparsed = false  
-          raw_transaction_data.ccparsed = false
-          if (iosparsed || ccparsed) {
-            sql_query.push(squel.update()
-              .table('transactions')
-              .set('iosparsed', iosparsed)
-              .set('ccparsed', ccparsed)
-              .where('txid = \'' + raw_transaction_data.txid + '\'')
-              .toString())
-          }
+          // put this query first because of outputs and inputs foreign key constraints, validate trasnaction in DB
+          sql_query.unshift(squel.insert()
+            .into('transactions')
+            .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations']}))
+            .toString() + ' on conflict (txid) do update set ' + to_sql_update_string({iosparsed: raw_transaction_data.iosparsed, ccparsed: raw_transaction_data.ccparsed}))
         }
         cb()
       }
@@ -1042,11 +1050,12 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     emits.forEach(function (emit) {
       self.emit(emit[0], emit[1])
     })
-    callback(null, did_work, raw_transaction_data.iosparsed || iosparsed, raw_transaction_data.ccparsed || ccparsed)
+    callback(null, did_work, raw_transaction_data.iosparsed, raw_transaction_data.ccparsed)
   })
 }
 
 Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
+  console.log('parse_mempool_cargo - txids = ', txids)
   var self = this
 
   var new_mempool_txs = []
@@ -1074,6 +1083,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   }
 
   bitcoin_rpc.cmd(command_arr, function (raw_transaction_data, cb) {
+    console.log('received result from bitcoind, raw_transaction_data.txid = ', raw_transaction_data.txid)
     var sql_query = []
     if (!raw_transaction_data) {
       console.log('Null transaction')
@@ -1081,6 +1091,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     }
     raw_transaction_data = to_discrete(raw_transaction_data)
     self.parse_new_mempool_transaction(raw_transaction_data, sql_query, emits, function (err, did_work, iosparsed, ccparsed) {
+      logger.info('parse_new_mempool: parse_new_mempool_transaction ended - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', ccparsed = ', ccparsed)
       if (err) return cb(err)
       if (!did_work) {
         return cb()
@@ -1094,7 +1105,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       if (!sql_query.length) return cb()
       sql_query = sql_query.join(';\n')
       self.sequelize.transaction(function (sql_transaction) {
-        return self.sequelize.query(sql_query, {transaction: sql_transaction, logging: (debug && console.log) })
+        return self.sequelize.query(sql_query, {transaction: sql_transaction, logging: console.log, benchmark: true})
           .then(function () { cb() })
           .catch(cb)
       })
@@ -1199,7 +1210,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
         ccparsed: {$col: 'colored'}
       }
       var attributes = ['txid']
-      self.Transactions.findOne({ where: conditions, attributes: attributes, raw: true })
+      self.Transactions.findOne({ where: conditions, attributes: attributes, logging: console.log, benchmark: true, raw: true })
       .then(function (tx) { cb(null, tx) })
       .catch(cb)
     },
@@ -1258,6 +1269,20 @@ var to_discrete = function (raw_transaction_data) {
     }
   })
   return raw_transaction_data
+}
+
+Scanner.prototype.transmit = function (txHex, callback) {
+  var self = this
+  if (typeof txHex !== 'string') {
+    txHex = txHex.toHex()
+  }
+  bitcoin_rpc.cmd('sendrawtransaction', [txHex], function (err, txid) {
+    if (err) return callback(err)
+    self.priority_parse(txid, function (err) {
+      if (err) return callback(err)
+      return callback(null, {txid: txid})
+    })
+  })
 }
 
 var to_sql_fields = function (obj, options) {
