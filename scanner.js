@@ -1327,9 +1327,9 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
 Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   var self = this
 
-  var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
+  var utxo_bulk = self.Utxo.collection.initializeOrderedBulkOp() // written with blood
   utxo_bulk.bulk_name = 'utxo_bulk'
-  var raw_transaction_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
+  var raw_transaction_bulk = self.RawTransactions.collection.initializeOrderedBulkOp()
   raw_transaction_bulk.bulk_name = 'raw_transaction_bulk'
   var addresses_transactions_bulk = self.AddressesTransactions.collection.initializeUnorderedBulkOp()
   addresses_transactions_bulk.bulk_name = 'addresses_transactions_bulk'
