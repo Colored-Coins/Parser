@@ -27,7 +27,7 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.JSONB  // to contain hex, asm
     },
     coinbase: {
-      type: DataTypes.STRING(20)
+      type: DataTypes.STRING
     },
     fixed: {
       type: DataTypes.BOOLEAN,
