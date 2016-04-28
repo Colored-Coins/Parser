@@ -837,11 +837,10 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     callback(null, all_fixed)  
   }
 
-  raw_transaction_data.vin.filter(function (vin) { return !vin.fixed }).forEach(function (vin) {
+  raw_transaction_data.vin.forEach(function (vin) {
     if (vin.coinbase) {
       coinbase = true
-      vin.fixed = true
-    } else {
+    } else if (!vin.fixed) {
       conditions.push({
         txid: vin.txid,
         $or: [
@@ -867,9 +866,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     include: [
       { model: self.Inputs, as: 'vin' },
       { model: self.Outputs, as: 'vout' }
-    ],
-    logging: console.log,
-    benchmark: true
+    ]
   })
   .then(end)
   .catch(callback)
