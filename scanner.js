@@ -516,6 +516,9 @@ Scanner.prototype.fix_blocks = function (err, callback) {
     self.get_need_to_fix_transactions_by_blocks(first_block, last_block, function (err, transactions_datas) {
       if (err) return callback(err)
       console.log('Fixing blocks ' + first_block + '-' + last_block + ' (' + transactions_datas.length + ' txs).')
+      if (transactions_datas.length === 1) {
+        console.log('Fixing ' + transactions_data[0].txid)
+      }
       if (!transactions_datas) return callback('can\'t get transactions from db')
       if (!transactions_datas.length) {
         return close_blocks(null, true)
@@ -791,6 +794,8 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
 
   var self = this
   var coinbase = false
+  var inputsToFix = {}
+  var conditions = []
 
   if (!raw_transaction_data.vin) {
     return callback('transaction ' + raw_transaction_data.txid + ' does not have vin.')
@@ -814,7 +819,12 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
       self.fix_input(input, sql_query)
       self.fix_used_output(input.txid, input.vout, raw_transaction_data.txid, blockheight, sql_query)
     })
-    var all_fixed = (inputsToFixNow.length ===  Object.keys(inputsToFix).length)    
+    var all_fixed = (inputsToFixNow.length ===  Object.keys(inputsToFix).length)
+    console.log('for txid ' + raw_transaction_data.txid + ', inputsToFixNow.length = ', inputsToFixNow + ', inputsToFix = ', inputsToFix)
+    if (!all_fixed) {
+      console.log('inputsToFixNow = ', inputsToFixNow)
+      console.log('inputsToFix = ', inputsToFix)
+    }
     if (all_fixed) {
       calc_fee(raw_transaction_data)
     } else {
@@ -827,8 +837,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     callback(null, all_fixed)  
   }
 
-  var inputsToFix = {}
-  var conditions = []
   raw_transaction_data.vin.filter(function (vin) { return !vin.fixed }).forEach(function (vin) {
     if (vin.coinbase) {
       coinbase = true
