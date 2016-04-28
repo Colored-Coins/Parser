@@ -516,9 +516,6 @@ Scanner.prototype.fix_blocks = function (err, callback) {
     self.get_need_to_fix_transactions_by_blocks(first_block, last_block, function (err, transactions_datas) {
       if (err) return callback(err)
       console.log('Fixing blocks ' + first_block + '-' + last_block + ' (' + transactions_datas.length + ' txs).')
-      if (transactions_datas.length === 1) {
-        console.log('Fixing ' + transactions_datas[0].txid)
-      }
       if (!transactions_datas) return callback('can\'t get transactions from db')
       if (!transactions_datas.length) {
         return close_blocks(null, true)
@@ -820,11 +817,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
       self.fix_used_output(input.txid, input.vout, raw_transaction_data.txid, blockheight, sql_query)
     })
     var all_fixed = (inputsToFixNow.length ===  Object.keys(inputsToFix).length)
-    console.log('for txid ' + raw_transaction_data.txid + ', inputsToFixNow.length = ', inputsToFixNow + ', inputsToFix = ', inputsToFix)
-    if (!all_fixed) {
-      console.log('inputsToFixNow = ', inputsToFixNow)
-      console.log('inputsToFix = ', inputsToFix)
-    }
     if (all_fixed) {
       calc_fee(raw_transaction_data)
     } else {
@@ -863,12 +855,23 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
   }
   self.Transactions.findAll({
     where: {$or: conditions},
+    attributes: [],
     include: [
-      { model: self.Inputs, as: 'vin' },
-      { model: self.Outputs, as: 'vout' }
-    ]
+      { model: self.Outputs, as: 'vout', attributes: ['id', 'txid', 'n', 'value'] }
+    ],
+    raw: true,
+    nest: true
   })
-  .then(end)
+  .then(function (transactions) {
+    transactions = _(transactions)
+      .groupBy('vout.txid')
+      .transform(function (result, vout, txid) {
+        result.push({txid: txid, vout: _.map(vout, 'vout') })
+        return result
+      }, [])
+      .value()
+    end(transactions)
+  })
   .catch(callback)
 }
 
