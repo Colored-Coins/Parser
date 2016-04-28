@@ -517,7 +517,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       if (err) return callback(err)
       console.log('Fixing blocks ' + first_block + '-' + last_block + ' (' + transactions_datas.length + ' txs).')
       if (transactions_datas.length === 1) {
-        console.log('Fixing ' + transactions_data[0].txid)
+        console.log('Fixing ' + transactions_datas[0].txid)
       }
       if (!transactions_datas) return callback('can\'t get transactions from db')
       if (!transactions_datas.length) {
