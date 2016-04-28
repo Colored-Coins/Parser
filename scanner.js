@@ -589,7 +589,9 @@ Scanner.prototype.parse_cc = function (err, callback) {
         set_last_fully_parsed_block(raw_block_data.height)
       })
 
+      console.log('before filter and map')
       var blocks_heights = _(raw_block_datas).filter('txsparsed').map('height').value()
+      console.log('after filter and map')
       if (!blocks_heights.length) {
         return setTimeout(function () {
           callback()
