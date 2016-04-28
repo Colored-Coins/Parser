@@ -584,14 +584,16 @@ Scanner.prototype.parse_cc = function (err, callback) {
         }
       }
 
+      var blocks_heights = []
       raw_block_datas.forEach(function (raw_block_data) {
-        self.emit('newblock', raw_block_data)
-        set_last_fully_parsed_block(raw_block_data.height)
+        if (raw_block_data.txsparsed) {
+          self.emit('newblock', raw_block_data)
+          set_last_fully_parsed_block(raw_block_data.height)
+          blocks_heights.push(raw_block_data.height)
+        }
       })
 
-      console.log('before filter and map')
-      var blocks_heights = _(raw_block_datas).filter('txsparsed').map('height').value()
-      console.log('after filter and map')
+      console.log('blocks_heights.length = ', blocks_heights.length)
       if (!blocks_heights.length) {
         return setTimeout(function () {
           callback()
