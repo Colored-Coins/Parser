@@ -522,7 +522,6 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       }
       async.each(transactions_datas, function (transaction_data, cb) {
         var sql_query = []
-        transaction_data = transaction_data.toJSON()
         self.fix_transaction(transaction_data, sql_query, function (err, all_fixed) {
           if (err) return cb(err)
           sql_query = sql_query.join(';\n')
@@ -748,17 +747,34 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
   this.Transactions.findAll({
     where: conditions,
     limit: 200,
+    attributes: ['txid', 'blockheight', 'tries', 'colored'],
     include: [
-      { model: this.Inputs, as: 'vin' },
-      { model: this.Outputs, as: 'vout' }
+      { model: this.Inputs, as: 'vin', attributes: {exclude: ['scriptSig']} },
+      { model: this.Outputs, as: 'vout', attributes: {exclude: ['scriptPubKey']} }
     ],
     order: [
       ['blockheight', 'ASC'], 
       ['tries', 'ASC'],
       [{model: this.Inputs, as: 'vin'}, 'input_index', 'ASC'],
       [{model: this.Outputs, as: 'vout'}, 'n', 'ASC']
-    ]
+    ],
+    raw: true,
+    nest: true
   }).then(function (transactions) {
+    transactions = _(transactions)
+      .groupBy('txid')
+      .transform(function (result, txs, txid) {
+        result.push({
+          txid: txid, 
+          blockheight: txs[0].blockheight,
+          tries: txs[0].tries,
+          colored: txs[0].colored,
+          vin: _.map(txs, 'vin'),
+          vout: _.map(txs, 'vout')
+        })
+        return result
+      }, [])
+      .value()
     console.log('get_need_to_fix_transactions_by_blocks - transactions.length = ', transactions.length)
     callback(null, transactions)
   }).catch(function (e) {
@@ -865,8 +881,8 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
   .then(function (transactions) {
     transactions = _(transactions)
       .groupBy('vout.txid')
-      .transform(function (result, vout, txid) {
-        result.push({txid: txid, vout: _.map(vout, 'vout') })
+      .transform(function (result, txs, txid) {
+        result.push({txid: txid, vout: _.map(txs, 'vout') })
         return result
       }, [])
       .value()
