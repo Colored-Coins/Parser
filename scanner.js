@@ -519,6 +519,9 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       if (!transactions_datas.length) {
         return close_blocks(null, true)
       }
+      if (transactions_datas.length === 1) {
+        console.log('Fixing ' + transactions_datas[0].txid)
+      }
       async.each(transactions_datas, function (transaction_data, cb) {
         var sql_query = []
         self.fix_transaction(transaction_data, sql_query, function (err, all_fixed) {
