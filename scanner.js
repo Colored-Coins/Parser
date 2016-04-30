@@ -180,7 +180,6 @@ Scanner.prototype.get_raw_block = function (block_height, callback) {
   var self = this
   console.log('get_raw_block(' + block_height + ')')
   bitcoin_rpc.cmd('getblockhash', [block_height], function (err, hash) {
-    console.log('getblockhash - err = ', err)
     if (err) {
       if ('code' in err && err.code === -8) {
         // logger.debug('CODE -8!!!')
