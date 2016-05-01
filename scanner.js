@@ -811,6 +811,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
   var coinbase = false
   var inputsToFix = {}
   var conditions = []
+  var outputsConditions = []
 
   if (!raw_transaction_data.vin) {
     return callback('transaction ' + raw_transaction_data.txid + ' does not have vin.')
@@ -864,6 +865,10 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
           }
         ]
       })
+      outputsConditions.push({
+        txid: vin.txid,
+        n: vin.vout
+      })
       inputsToFix[vin.txid + ':' + vin.vout] = vin
     }
   })
@@ -875,13 +880,15 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     where: {$or: conditions},
     attributes: [],
     include: [
-      { model: self.Outputs, as: 'vout', attributes: ['id', 'txid', 'n', 'value'] }
+      // we need only the outputs which correspond to the given transaction inputs
+      { model: self.Outputs, as: 'vout', attributes: ['id', 'txid', 'n', 'value'], on: {$or: outputsConditions} }
     ],
     raw: true,
-    nest: true
+    nest: true,
+    logging: true
   })
   .then(function (transactions) {
-    console.log('fix_vin - transactions.length = ', trasnactions.length)
+    console.log('fix_vin - transactions.length = ', transactions.length)
     transactions = _(transactions)
       .groupBy('vout.txid')
       .transform(function (result, txs, txid) {
