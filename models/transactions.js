@@ -23,6 +23,9 @@ module.exports = function (sequelize, DataTypes) {
     hex: {
       type: DataTypes.TEXT
     },
+    size: {
+      type: DataTypes.INTEGER
+    },
     version: {
       type: DataTypes.INTEGER
     },

@@ -881,6 +881,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     nest: true
   })
   .then(function (transactions) {
+    console.log('fix_vin - transactions.length = ', trasnactions.length)
     transactions = _(transactions)
       .groupBy('vout.txid')
       .transform(function (result, txs, txid) {
