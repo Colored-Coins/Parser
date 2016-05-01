@@ -30,6 +30,9 @@ module.exports = function (sequelize, DataTypes) {
     time: {
       type: DataTypes.DOUBLE
     },
+    mediantime: {
+      type: DataTypes.BIGINT
+    },
     nonce: {
       type: DataTypes.BIGINT
     },
