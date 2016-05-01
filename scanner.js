@@ -786,6 +786,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
 }
 
 Scanner.prototype.fix_transaction = function (raw_transaction_data, sql_query, callback) {
+  console.log('fix_transaction, txid = ', raw_transaction_data.txid)
   this.fix_vin(raw_transaction_data, raw_transaction_data.blockheight, sql_query, function (err, all_fixed) {
     if (err) return callback(err)
     var query = squel.update()
@@ -821,6 +822,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
   if (!raw_transaction_data.vin) {
     return callback('transaction ' + raw_transaction_data.txid + ' does not have vin.')
   }
+  console.log('fix_vin #1, txid  = ', raw_transaction_data.txid)
 
   var end = function (in_transactions) {
     var inputsToFixNow = []
@@ -878,6 +880,8 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     }
   })
 
+  console.log('fix_vin #2, txid  = ', raw_transaction_data.txid)
+
   if (coinbase) {
     return end([])
   }
@@ -889,10 +893,12 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
       { model: self.Outputs, as: 'vout', attributes: ['id', 'txid', 'n', 'value'], on: {$or: outputsConditions} }
     ],
     raw: true,
-    nest: true
+    nest: true,
+    logging: console.log
   })
   .then(function (transactions) {
     console.log('fix_vin - transactions.length = ', transactions.length)
+    console.log('transactions = ', JSON.stringify(transactions))
     transactions = _(transactions)
       .groupBy('vout.txid')
       .transform(function (result, txs, txid) {
