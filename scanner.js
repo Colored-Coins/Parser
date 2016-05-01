@@ -788,14 +788,19 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
 Scanner.prototype.fix_transaction = function (raw_transaction_data, sql_query, callback) {
   this.fix_vin(raw_transaction_data, raw_transaction_data.blockheight, sql_query, function (err, all_fixed) {
     if (err) return callback(err)
-    sql_query.push(squel.update()
+    var query = squel.update()
       .table('transactions')
       .set('iosparsed', all_fixed)
       .set('tries', raw_transaction_data.tries || 0)
-      .set('fee', raw_transaction_data.fee)
-      .set('totalsent', raw_transaction_data.totalsent)
-      .where('txid = \'' + raw_transaction_data.txid + '\'')
-      .toString())
+    if (raw_transaction_data.fee) {
+      query = query.set('fee', raw_transaction_data.fee)
+    }
+    if (raw_transaction_data.totalsent) {
+      query = query.set('totalsent', raw_transaction_data.totalsent)
+    }
+    query = query.where('txid = \'' + raw_transaction_data.txid + '\'')
+      .toString()
+    sql_query.push(query)
     callback(null, all_fixed)
   })
 }
@@ -884,8 +889,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
       { model: self.Outputs, as: 'vout', attributes: ['id', 'txid', 'n', 'value'], on: {$or: outputsConditions} }
     ],
     raw: true,
-    nest: true,
-    logging: true
+    nest: true
   })
   .then(function (transactions) {
     console.log('fix_vin - transactions.length = ', transactions.length)
