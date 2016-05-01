@@ -27,7 +27,7 @@
     "cc-transaction": "^1.0.0",
     "sequelize": "^3.19.3",
     "squel": "^5.0.3",
-    "lodash": "^3.10.1",
+    "lodash": "^4.11.1",
     "mongoose": "~4.4.3"
   }
 }

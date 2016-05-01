@@ -763,6 +763,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     raw: true,
     nest: true
   }).then(function (transactions) {
+    console.log('get_need_to_fix_transactions_by_blocks #1 - transactions.length = ', transactions.length)
     transactions = _(transactions)
       .groupBy('txid')
       .transform(function (result, txs, txid) {
@@ -771,13 +772,13 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
           blockheight: txs[0].blockheight,
           tries: txs[0].tries,
           colored: txs[0].colored,
-          vin: _.map(txs, 'vin'),
-          vout: _.map(txs, 'vout')
+          vin: _(txs).uniqBy('vin.input_index').map('vin').value(),
+          vout: _(txs).uniqBy('vout.n').map('vout').value()
         })
         return result
       }, [])
       .value()
-    console.log('get_need_to_fix_transactions_by_blocks - transactions.length = ', transactions.length)
+    console.log('get_need_to_fix_transactions_by_blocks #2 - transactions.length = ', transactions.length)
     callback(null, transactions)
   }).catch(function (e) {
     console.log('get_need_to_fix_transactions_by_blocks - e = ', e)
@@ -793,13 +794,9 @@ Scanner.prototype.fix_transaction = function (raw_transaction_data, sql_query, c
       .table('transactions')
       .set('iosparsed', all_fixed)
       .set('tries', raw_transaction_data.tries || 0)
-    if (raw_transaction_data.fee) {
-      query = query.set('fee', raw_transaction_data.fee)
-    }
-    if (raw_transaction_data.totalsent) {
-      query = query.set('totalsent', raw_transaction_data.totalsent)
-    }
-    query = query.where('txid = \'' + raw_transaction_data.txid + '\'')
+      .set('fee', raw_transaction_data.fee || 0)
+      .set('totalsent', raw_transaction_data.totalsent || 0)
+      .where('txid = \'' + raw_transaction_data.txid + '\'')
       .toString()
     sql_query.push(query)
     callback(null, all_fixed)
@@ -880,25 +877,31 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     }
   })
 
-  console.log('fix_vin #2, txid  = ', raw_transaction_data.txid)
+  console.log('fix_vin #2, txid  = ', raw_transaction_data.txid + ', conditions.length = ', conditions.length)
 
   if (coinbase) {
     return end([])
   }
+
+  console.log('fix_vin #3, txid  = ', raw_transaction_data.txid + ', conditions.length = ', conditions.length)
+
   self.Transactions.findAll({
     where: {$or: conditions},
     attributes: [],
     include: [
       // we need only the outputs which correspond to the given transaction inputs
-      { model: self.Outputs, as: 'vout', attributes: ['id', 'txid', 'n', 'value'], on: {$or: outputsConditions} }
+      { model: self.Outputs, as: 'vout', attributes: ['id', 'txid', 'n', 'value'], on: 
+        {
+          txid: {$col: 'transactions.txid'}, 
+          $or: outputsConditions
+        }
+      }
     ],
     raw: true,
-    nest: true,
-    logging: console.log
+    nest: true
   })
   .then(function (transactions) {
     console.log('fix_vin - transactions.length = ', transactions.length)
-    console.log('transactions = ', JSON.stringify(transactions))
     transactions = _(transactions)
       .groupBy('vout.txid')
       .transform(function (result, txs, txid) {
