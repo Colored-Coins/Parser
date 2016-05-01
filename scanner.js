@@ -819,7 +819,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
   if (!raw_transaction_data.vin) {
     return callback('transaction ' + raw_transaction_data.txid + ' does not have vin.')
   }
-  console.log('fix_vin #1, txid  = ', raw_transaction_data.txid)
 
   var end = function (in_transactions) {
     var inputsToFixNow = []
@@ -877,13 +876,9 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     }
   })
 
-  console.log('fix_vin #2, txid  = ', raw_transaction_data.txid + ', conditions.length = ', conditions.length)
-
   if (coinbase) {
     return end([])
   }
-
-  console.log('fix_vin #3, txid  = ', raw_transaction_data.txid + ', conditions.length = ', conditions.length)
 
   self.Transactions.findAll({
     where: {$or: conditions},
