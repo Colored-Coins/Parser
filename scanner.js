@@ -768,7 +768,6 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
 }
 
 Scanner.prototype.fix_transaction = function (raw_transaction_data, sql_query, callback) {
-  console.log('fix_transaction, txid = ', raw_transaction_data.txid)
   this.fix_vin(raw_transaction_data, raw_transaction_data.blockheight, sql_query, function (err, all_fixed) {
     if (err) return callback(err)
     var query = squel.update()
@@ -883,7 +882,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     nest: true
   })
   .then(function (inputs_transactions) {
-    console.log('fix_vin ' + raw_transaction_data.txid + '- inputs_transactions.length = ', inputs_transactions.length)
     inputs_transactions = _(inputs_transactions)
       .groupBy('vout.txid')
       .transform(function (result, txs, txid) {
