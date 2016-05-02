@@ -523,6 +523,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       }
       async.each(transactions_datas, function (transaction_data, cb) {
         var sql_query = []
+        transaction_data = transaction_data.toJSON()
         self.fix_transaction(transaction_data, sql_query, function (err, all_fixed) {
           if (err) return cb(err)
           sql_query = sql_query.join(';\n')
