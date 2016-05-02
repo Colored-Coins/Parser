@@ -823,8 +823,10 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     if (all_fixed) {
       calc_fee(raw_transaction_data)
       if (raw_transaction_data.fee < 0) {
+        console.log('calc_fee < 0 !!!')
         console.log('calc_fee: ' + raw_transaction_data.txid + ', raw_transaction_data.fee = ', raw_transaction_data.fee)
         console.log('calc_fee: ' + raw_transaction_data.txid + ', raw_transaction_data.totalsent = ', raw_transaction_data.totalsent)
+        console.log('calc_fee, ' + raw_transaction_data.txid + ', raw_transaction_data = ', raw_transaction_data)
       }
     } else {
       raw_transaction_data.tries = raw_transaction_data.tries || 0
