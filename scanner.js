@@ -158,7 +158,6 @@ Scanner.prototype.get_next_new_block = function (callback) {
   var self = this
   console.log('get_next_new_block')
   if (properties.last_block && properties.last_hash) {
-    console.log('properties.last_block = ', properties.last_block)
     return callback(null, properties.last_block + 1, properties.last_hash)
   }
   self.Blocks.findOne({
@@ -751,34 +750,35 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     limit: 200,
     attributes: ['txid', 'blockheight', 'tries', 'colored'],
     include: [
-      { model: this.Inputs, as: 'vin', attributes: {exclude: ['scriptSig']} },
-      { model: this.Outputs, as: 'vout', attributes: {exclude: ['scriptPubKey']} }
+      { model: this.Inputs, separate: true, as: 'vin', attributes: {exclude: ['scriptSig']}, order: [['input_index', 'ASC']] },
+      { model: this.Outputs, separate: true, as: 'vout', attributes: {exclude: ['scriptPubKey']}, order: [['n', 'ASC']] }
     ],
     order: [
       ['blockheight', 'ASC'], 
       ['tries', 'ASC'],
-      [{model: this.Inputs, as: 'vin'}, 'input_index', 'ASC'],
-      [{model: this.Outputs, as: 'vout'}, 'n', 'ASC']
-    ],
-    raw: true,
-    nest: true
+      // [{model: this.Inputs, as: 'vin'}, 'input_index', 'ASC'],
+      // [{model: this.Outputs, as: 'vout'}, 'n', 'ASC']
+    ]
+    // raw: true,
+    // nest: true
   }).then(function (transactions) {
+    // console.log('get_need_to_fix_transactions_by_blocks #1 - transactions = ', JSON.stringify(transactions))
     console.log('get_need_to_fix_transactions_by_blocks #1 - transactions.length = ', transactions.length)
-    transactions = _(transactions)
-      .groupBy('txid')
-      .transform(function (result, txs, txid) {
-        result.push({
-          txid: txid, 
-          blockheight: txs[0].blockheight,
-          tries: txs[0].tries,
-          colored: txs[0].colored,
-          vin: _(txs).uniqBy('vin.input_index').map('vin').value(),
-          vout: _(txs).uniqBy('vout.n').map('vout').value()
-        })
-        return result
-      }, [])
-      .value()
-    console.log('get_need_to_fix_transactions_by_blocks #2 - transactions.length = ', transactions.length)
+    // transactions = _(transactions)
+    //   .groupBy('txid')
+    //   .transform(function (result, txs, txid) {
+    //     result.push({
+    //       txid: txid, 
+    //       blockheight: txs[0].blockheight,
+    //       tries: txs[0].tries,
+    //       colored: txs[0].colored,
+    //       vin: _(txs).uniqBy('vin.input_index').map('vin').value(),
+    //       vout: _(txs).uniqBy('vout.n').map('vout').value()
+    //     })
+    //     return result
+    //   }, [])
+    //   .value()
+    // console.log('get_need_to_fix_transactions_by_blocks #2 - transactions.length = ', transactions.length)
     callback(null, transactions)
   }).catch(function (e) {
     console.log('get_need_to_fix_transactions_by_blocks - e = ', e)
@@ -895,16 +895,16 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     raw: true,
     nest: true
   })
-  .then(function (transactions) {
-    console.log('fix_vin - transactions.length = ', transactions.length)
-    transactions = _(transactions)
+  .then(function (inputs_transactions) {
+    console.log('fix_vin ' + raw_transaction_data.txid + '- inputs_transactions.length = ', inputs_transactions.length)
+    inputs_transactions = _(inputs_transactions)
       .groupBy('vout.txid')
       .transform(function (result, txs, txid) {
         result.push({txid: txid, vout: _.map(txs, 'vout') })
         return result
       }, [])
       .value()
-    end(transactions)
+    end(inputs_transactions)
   })
   .catch(callback)
 }
