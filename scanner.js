@@ -768,17 +768,17 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
 }
 
 Scanner.prototype.fix_transaction = function (raw_transaction_data, sql_query, callback) {
+  console.log('fix_transaction, txid = ', raw_transaction_data.txid)
   this.fix_vin(raw_transaction_data, raw_transaction_data.blockheight, sql_query, function (err, all_fixed) {
     if (err) return callback(err)
-    var query = squel.update()
+    sql_query.push(squel.update()
       .table('transactions')
       .set('iosparsed', all_fixed)
       .set('tries', raw_transaction_data.tries || 0)
       .set('fee', raw_transaction_data.fee || 0)
       .set('totalsent', raw_transaction_data.totalsent || 0)
       .where('txid = \'' + raw_transaction_data.txid + '\'')
-      .toString()
-    sql_query.push(query)
+      .toString())
     callback(null, all_fixed)
   })
 }
@@ -818,7 +818,11 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
       self.fix_input(input, sql_query)
       self.fix_used_output(input.txid, input.vout, raw_transaction_data.txid, blockheight, sql_query)
     })
+
     var all_fixed = (inputsToFixNow.length ===  Object.keys(inputsToFix).length)
+    if (!all_fixed) {
+      console.log('fix_vin: txid ', raw_transaction_data.txid + ' all_fixed = false. inputsToFixNow.length = ' + inputsToFixNow.length + ', inputsToFix.length = ' + Object.keys(inputsToFix).length)
+    }
     if (all_fixed) {
       calc_fee(raw_transaction_data)
       if (raw_transaction_data.fee < 0) {
@@ -830,6 +834,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     } else {
       raw_transaction_data.tries = raw_transaction_data.tries || 0
       raw_transaction_data.tries++
+      console.log('fix_vin: txid ' + raw_transaction_data.txid + ', tries = ', raw_transaction_data.tries)
       if (raw_transaction_data.tries > 1000) {
         console.warn('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(inputsToFix), ') for over than 1000 tries.')
       }
@@ -882,6 +887,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     nest: true
   })
   .then(function (inputs_transactions) {
+    console.log('fix_vin ' + raw_transaction_data.txid + ' - inputs_transactions.length = ', inputs_transactions.length)
     inputs_transactions = _(inputs_transactions)
       .groupBy('vout.txid')
       .transform(function (result, txs, txid) {

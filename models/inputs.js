@@ -55,26 +55,11 @@ module.exports = function (sequelize, DataTypes) {
         res = res.scriptPubKey
         delete res.value
         return res
-      },
-      value: function () {
-        var res = this.getDataValue('previousOutput')
-        return res && res.value
       }
     },
     setterMethods: {
       previousOutput: function (value) {
         this.setDataValue('previousOutput', value)
-      }
-    },
-    instanceMethods: {
-      toJSON: function () {
-        var raw_input = this.get({plain: true})
-        Object.keys(raw_input).forEach(function (key) {
-          if (typeof raw_input[key] === 'undefined') {
-            delete raw_input[key]
-          }
-        })
-        return raw_input
       }
     },
     indexes: [
