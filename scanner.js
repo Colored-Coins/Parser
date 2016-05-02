@@ -756,30 +756,10 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     ],
     order: [
       ['blockheight', 'ASC'], 
-      ['tries', 'ASC'],
-      // [{model: this.Inputs, as: 'vin'}, 'input_index', 'ASC'],
-      // [{model: this.Outputs, as: 'vout'}, 'n', 'ASC']
+      ['tries', 'ASC']
     ]
-    // raw: true,
-    // nest: true
   }).then(function (transactions) {
-    // console.log('get_need_to_fix_transactions_by_blocks #1 - transactions = ', JSON.stringify(transactions))
     console.log('get_need_to_fix_transactions_by_blocks #1 - transactions.length = ', transactions.length)
-    // transactions = _(transactions)
-    //   .groupBy('txid')
-    //   .transform(function (result, txs, txid) {
-    //     result.push({
-    //       txid: txid, 
-    //       blockheight: txs[0].blockheight,
-    //       tries: txs[0].tries,
-    //       colored: txs[0].colored,
-    //       vin: _(txs).uniqBy('vin.input_index').map('vin').value(),
-    //       vout: _(txs).uniqBy('vout.n').map('vout').value()
-    //     })
-    //     return result
-    //   }, [])
-    //   .value()
-    // console.log('get_need_to_fix_transactions_by_blocks #2 - transactions.length = ', transactions.length)
     callback(null, transactions)
   }).catch(function (e) {
     console.log('get_need_to_fix_transactions_by_blocks - e = ', e)
@@ -842,6 +822,10 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     var all_fixed = (inputsToFixNow.length ===  Object.keys(inputsToFix).length)
     if (all_fixed) {
       calc_fee(raw_transaction_data)
+      if (raw_transaction_data.fee < 0) {
+        console.log('calc_fee: ' + raw_transaction_data.txid + ', raw_transaction_data.fee = ', raw_transaction_data.fee)
+        console.log('calc_fee: ' + raw_transaction_data.txid + ', raw_transaction_data.totalsent = ', raw_transaction_data.totalsent)
+      }
     } else {
       raw_transaction_data.tries = raw_transaction_data.tries || 0
       raw_transaction_data.tries++
