@@ -39,8 +39,10 @@ module.exports = function (sequelize, DataTypes) {
       associate: function (models) {
         Outputs.belongsTo(models.transactions, { foreignKey: 'txid', as: 'transaction' })
         Outputs.hasOne(models.inputs, { foreignKey: 'output_id', constraints: false }) // constraints = false because an output is not necessarily used
+
+        Outputs.belongsToMany(models.assets, { as: 'assets', through: models.assetsoutputs, foreignKey: 'output_id', otherKey: 'assetId' })
         Outputs.hasMany(models.addressesoutputs, { foreignKey: 'output_id', constraints: false }) // constraints = false because addressoutput is inserted after output
-        Outputs.hasMany(models.assetsoutputs, { foreignKey: 'output_id', constraints: false }) // constraints = false because assetoutput is inserted after output
+        // Outputs.hasMany(models.assetsoutputs, { foreignKey: 'output_id', constraints: false }) // constraints = false because assetoutput is inserted after output
       }
     },
     indexes: [

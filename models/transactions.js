@@ -74,8 +74,9 @@ module.exports = function (sequelize, DataTypes) {
     },
     classMethods: {
       associate: function (models) {
-        Transactions.hasMany(models.outputs, { foreignKey: 'txid', as: 'vout'})
+        Transactions.hasMany(models.outputs, { foreignKey: 'txid', as: 'vout' })
         Transactions.hasMany(models.inputs, { foreignKey: 'input_txid', as: 'vin' }) // inputs in this transaction
+        Transactions.belongsToMany(models.assets, { as: 'assets', through: models.assetstransactions, foreignKey: 'txid', otherKey: 'assetId' })
       }
     },
     getterMethods: {

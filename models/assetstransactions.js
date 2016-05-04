@@ -13,16 +13,17 @@ module.exports = function (sequelize, DataTypes) {
       primaryKey: true
     },
     type: {
-      type: DataTypes.ENUM('issuance', 'transfer')
+      type: DataTypes.ENUM('issuance', 'transfer'),
+      allowNull: false
     }
   },
   {
-    classMethods: {
-      associate: function (models) {
-        AssetsTransactions.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
-        AssetsTransactions.belongsTo(models.transactions, { foreignKey: 'txid', as: 'transaction' })
-      }
-    },
+    // classMethods: {
+    //   associate: function (models) {
+    //     AssetsTransactions.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
+    //     AssetsTransactions.belongsTo(models.transactions, { foreignKey: 'txid', as: 'transaction' })
+    //   }
+    // },
     indexes: [
       {
         fields: ['assetId']

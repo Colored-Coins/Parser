@@ -17,16 +17,21 @@ module.exports = function (sequelize, DataTypes) {
       primaryKey: true
     },
     amount: {
-      type: DataTypes.INTEGER
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
+    issueTxid: {
+      type: bitcoinDataTypes.hashType,
+      allowNull: false
     }
   },
   {
-    classMethods: {
-      associate: function (models) {
-        AssetsOutputs.belongsTo(models.outputs, { foreignKey: 'output_id', as: 'output' })
-        AssetsOutputs.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
-      }
-    },
+    // classMethods: {
+    //   associate: function (models) {
+    //     AssetsOutputs.belongsTo(models.outputs, { foreignKey: 'output_id', as: 'output' })
+    //     AssetsOutputs.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
+    //   }
+    // },
     indexes: [
       {
         fields: ['assetId']

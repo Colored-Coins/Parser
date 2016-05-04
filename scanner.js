@@ -423,7 +423,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
           .into('addressesoutputs')
           .set('address', address)
           .set('output_id',
-            squel.select().field('id').from('outputs').where('txid = \'' +  new_utxo.txid + '\' AND n = ' + new_utxo.n))
+            squel.select().field('id').from('outputs').where('txid = \'' + new_utxo.txid + '\' AND n = ' + new_utxo.n))
           .toString() + ' on conflict (address, output_id) do nothing')
       })
     }
@@ -639,7 +639,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
         }
         did_work = true
         sql_query.push(squel.update()
-          .into('transactions')
+          .table('transactions')
           .set('ccparsed', true)
           .set('overflow', transaction_data.overflow || false)
           .where('iosparsed AND txid = \'' + transaction_data.txid + '\'')
@@ -648,7 +648,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
         emits.push(['newcctransaction', transaction_data])
         emits.push(['newtransaction', transaction_data])
         self.sequelize.transaction(function (sql_transaction) {
-          return self.sequelize.query(sql_query, {transaction: sql_transaction})
+          return self.sequelize.query(sql_query, {transaction: sql_transaction, logging: console.log})
             .then(function () { cb() })
             .catch(cb)
         })
@@ -662,20 +662,15 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
     return
   }
 
+  console.warn('parse_cc_tx ' + transaction_data.txid)
   var assetsArrays = get_assets_outputs(transaction_data)
-  var index = 0
-  assetsArrays.forEach(function (assetArray, out_index) {
-    index = out_index
-    if (!assetArray) {
+  console.log('assetsArrays = ', JSON.stringify(assetsArrays))
+  assetsArrays.forEach(function (assetsArray, out_index) {
+    if (!assetsArray || !assetsArray.length) {
       return
     }
-    transaction_data.vout[out_index].assets = asset
-    var conditions = {
-      txid: transaction_data.txid,
-      index: out_index
-    }
 
-    assetArray.forEach(function (asset, index_in_output) {
+    assetsArray.forEach(function (asset, index_in_output) {
       var type = null
       if (transaction_data.ccdata && transaction_data.ccdata.length && transaction_data.ccdata[0].type) {
         type = transaction_data.ccdata[0].type
@@ -684,23 +679,26 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
         sql_query.push(squel.insert()
           .into('assets')
           .set('assetId', asset.assetId)
-          .set('issueTxid', asset.issueTxid)
+          .set('lockStatus', asset.lockStatus)
           .set('divisibility', asset.divisibility)
           .set('aggregationPolicy', asset.aggregationPolicy)
-          .toString() + ' on conflict ("assetId") do nothing')  
+          .toString() + ' on conflict ("assetId") do nothing')
       }
       sql_query.push(squel.insert()
         .into('assetstransactions')
         .set('assetId', asset.assetId)
         .set('txid', transaction_data.txid)
         .set('type', type)
-        .toString() + ' on conflict ("assetId") do nothing')
+        .toString() + ' on conflict ("assetId", txid) do nothing')
+      console.warn('parse_cc_tx - inserting asset ' + asset.assetId + ' into output ' + transaction_data.txid + ':' + out_index)
       sql_query.push(squel.insert()
         .into('assetsoutputs')
         .set('assetId', asset.assetId)
+        .set('issueTxid', asset.issueTxid)
+        .set('amount', asset.amount)
         .set('output_id', transaction_data.vout[out_index].id)
         .set('index_in_output', index_in_output)
-        .toString() + ' on conflict ("assetId", output_id) do nothing')
+        .toString() + ' on conflict ("assetId", output_id, index_in_output) do nothing')
       if (asset.amount && transaction_data.vout[out_index].scriptPubKey && transaction_data.vout[out_index].scriptPubKey.addresses) {
         transaction_data.vout[out_index].scriptPubKey.addresses.forEach(function (address) {
           sql_query.push(squel.insert()
@@ -715,6 +713,7 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
 }
 
 Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_block, last_block, callback) {
+  console.warn('get_need_to_cc_parse_transactions_by_blocks for blocks ' + first_block + '-' + last_block)
   var conditions = {
     colored: true,
     ccparsed: false,
@@ -724,16 +723,54 @@ Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_
     where: conditions,
     limit: 1000,
     include: [
-      { model: this.Inputs, as: 'vin' },
-      { model: this.Outputs, as: 'vout', include: [
-        { model: this.AssetsOutputs, include: [
-          { model: this.Assets, as: 'asset' }
-        ]}
-      ]}
+      { 
+        model: this.Inputs, 
+        as: 'vin',
+        // separate: true,
+        // order: [
+        //   ['input_index', 'ASC'],
+        //   [{model: this.Assets, as: 'assets'}, {model: this.AssetsOutputs}, 'index_in_output', 'ASC']
+        // ],
+        include: [
+          {
+            model: this.Outputs,
+            as: 'previousOutput',
+            include: [
+              { model: this.Assets, as: 'assets', through: this.AssetsOutputs }
+            ]
+          }
+        ]
+      },
+      { 
+        model: this.Outputs,
+        as: 'vout',
+        // separate: true,
+        // order: [
+        //   ['n', 'ASC'],
+        //   [{model: this.Assets, as: 'assets'}, {model: this.AssetsOutputs}, 'index_in_output', 'ASC']
+        // ],
+        include: [
+          { model: this.Assets, as: 'assets', through: this.AssetsOutputs }
+        ]
+      }
     ],
-    order: [['blockheight', 'ASC']]
+    order: [
+      ['blockheight', 'ASC'],
+      [{model: this.Inputs, as: 'vin'}, 'input_index', 'ASC'],
+      [{model: this.Outputs, as: 'vout'}, 'n', 'ASC'],
+      [{model: this.Outputs, as: 'vout'}, {model: this.Assets, as: 'assets'}, {model: this.AssetsOutputs}, 'index_in_output', 'ASC']
+    ],
+    logging: console.warn
   }).then(function (transactions) {
-    console.log('get_need_to_cc_parse_transactions_by_blocks - transactions.length = ', transactions.length)
+    if (transactions.length) {
+      // transactions[0].vin.forEach(function (input) {
+      //   if (input.assets && input.assets.length) {
+          
+      //   }
+      // })
+      console.warn('get_need_to_cc_parse_transactions_by_blocks, transactions = ', JSON.stringify(transactions[0].toJSON()))
+    }
+    console.warn('get_need_to_cc_parse_transactions_by_blocks - transactions.length = ', transactions.length)
     callback(null, transactions)
   }).catch(function (e) {
     console.log('get_need_to_cc_parse_transactions_by_blocks - e = ', e)
@@ -755,7 +792,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
       { model: this.Outputs, separate: true, as: 'vout', attributes: {exclude: ['scriptPubKey']}, order: [['n', 'ASC']] }
     ],
     order: [
-      ['blockheight', 'ASC'], 
+      ['blockheight', 'ASC'],
       ['tries', 'ASC']
     ]
   }).then(function (transactions) {
@@ -768,7 +805,6 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
 }
 
 Scanner.prototype.fix_transaction = function (raw_transaction_data, sql_query, callback) {
-  console.log('fix_transaction, txid = ', raw_transaction_data.txid)
   this.fix_vin(raw_transaction_data, raw_transaction_data.blockheight, sql_query, function (err, all_fixed) {
     if (err) return callback(err)
     sql_query.push(squel.update()
@@ -813,13 +849,17 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
         }
       })
     })
+    if (raw_transaction_data.txid === '520e0f70f54f06a5f4d3def9a264ad6eddf635d12a84f9b2aa4dd6ee301344b2') {
+      console.warn('fix_vin: txid ', raw_transaction_data.txid + ', in_transactions = ', JSON.stringify(in_transactions))
+      console.warn('fix_vin: txid ', raw_transaction_data.txid + ', inputsToFixNow = ', JSON.stringify(inputsToFixNow))
+    }
 
     inputsToFixNow.forEach(function (input) {
       self.fix_input(input, sql_query)
       self.fix_used_output(input.txid, input.vout, raw_transaction_data.txid, blockheight, sql_query)
     })
 
-    var all_fixed = (inputsToFixNow.length ===  Object.keys(inputsToFix).length)
+    var all_fixed = (inputsToFixNow.length === Object.keys(inputsToFix).length)
     if (!all_fixed) {
       console.log('fix_vin: txid ', raw_transaction_data.txid + ' all_fixed = false. inputsToFixNow.length = ' + inputsToFixNow.length + ', inputsToFix.length = ' + Object.keys(inputsToFix).length)
     }
@@ -834,12 +874,12 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     } else {
       raw_transaction_data.tries = raw_transaction_data.tries || 0
       raw_transaction_data.tries++
-      console.log('fix_vin: txid ' + raw_transaction_data.txid + ', tries = ', raw_transaction_data.tries)
+      // console.log('fix_vin: txid ' + raw_transaction_data.txid + ', tries = ', raw_transaction_data.tries)
       if (raw_transaction_data.tries > 1000) {
         console.warn('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(inputsToFix), ') for over than 1000 tries.')
       }
     }
-    callback(null, all_fixed)  
+    callback(null, all_fixed)
   }
 
   raw_transaction_data.vin.forEach(function (vin) {
@@ -876,9 +916,9 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     attributes: [],
     include: [
       // we need only the outputs which correspond to the given transaction inputs
-      { model: self.Outputs, as: 'vout', attributes: ['id', 'txid', 'n', 'value'], on: 
+      { model: self.Outputs, as: 'vout', attributes: ['id', 'txid', 'n', 'value'], on:
         {
-          txid: {$col: 'transactions.txid'}, 
+          txid: {$col: 'transactions.txid'},
           $or: outputsConditions
         }
       }
@@ -887,11 +927,11 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     nest: true
   })
   .then(function (inputs_transactions) {
-    console.log('fix_vin ' + raw_transaction_data.txid + ' - inputs_transactions.length = ', inputs_transactions.length)
+    // console.log('fix_vin ' + raw_transaction_data.txid + ' - inputs_transactions.length = ', inputs_transactions.length)
     inputs_transactions = _(inputs_transactions)
       .groupBy('vout.txid')
       .transform(function (result, txs, txid) {
-        result.push({txid: txid, vout: _.map(txs, 'vout') })
+        result.push({txid: txid, vout: _.map(txs, 'vout')})
         return result
       }, [])
       .value()
@@ -986,17 +1026,14 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   var self = this
   var transaction_data
   var did_work = false
-  var iosparsed
-  var ccparsed
   var blockheight = -1
-  var emits = []
   var conditions = {
     txid: raw_transaction_data.txid
   }
   async.waterfall([
     function (cb) {
       self.Transactions.findOne({
-        where: conditions, 
+        where: conditions,
         attributes: {exclude: ['index_in_block']},
         include: [
           { model: self.Inputs, as: 'vin', attributes: {exclude: ['output_id', 'input_txid', 'input_index']}, include: [
@@ -1017,18 +1054,17 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         blockheight = raw_transaction_data.blockheight || -1
         cb(null, blockheight)
       } else {
-        logger.debug('parse_new_mempool_transaction: did not find in DB, parsing new tx: ' + raw_transaction_data.txid)
+        console.log('parse_new_mempool_transaction: did not find in DB, parsing new tx: ' + raw_transaction_data.txid)
         did_work = true
         if (blockheight === -1 && raw_transaction_data.blockhash) {
           get_block_height(raw_transaction_data.blockhash, cb)
-        }
-        else {
+        } else {
           cb(null, blockheight)
         }
       }
     },
     function (l_blockheight, cb) {
-      logger.debug('parse_new_mempool_transaction: l_blockheight = ' + l_blockheight)
+      console.log('parse_new_mempool_transaction: l_blockheight = ' + l_blockheight)
       blockheight = l_blockheight
       if (transaction_data) return cb()
       if (raw_transaction_data.time) {

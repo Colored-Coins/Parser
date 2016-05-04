@@ -4,8 +4,8 @@ var bitcoinDataTypes = require('./bitcoinDataTypes')
 
 module.exports = function (sequelize, DataTypes) {
   var AssetsAddresses = sequelize.define('assetsaddresses', {
-    txid: {
-      type: DataTypes.STRING,
+    assetId: {
+      type: bitcoinDataTypes.assetIdType,
       primaryKey: true
     },
     address: {
@@ -14,14 +14,14 @@ module.exports = function (sequelize, DataTypes) {
     }
   },
   {
-    classMethods: {
-      associate: function (models) {
-        AssetsAddresses.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
-      },
-    },
+    // classMethods: {
+    //   associate: function (models) {
+    //     AssetsAddresses.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
+    //   },
+    // },
     indexes: [
       {
-        fields: ['txid']
+        fields: ['assetId']
       },
       {
         fields: ['address']
