@@ -8,6 +8,7 @@ var get_assets_outputs = require('cc-get-assets-outputs')
 var squel = require('squel').useFlavour('postgres')
 squel.cls.DefaultQueryBuilderOptions.autoQuoteFieldNames = true
 squel.cls.DefaultQueryBuilderOptions.nameQuoteCharacter = '"'
+squel.cls.DefaultQueryBuilderOptions.separator = '\n'
 
 var properties
 var bitcoin_rpc
@@ -284,7 +285,7 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
       sql_query += squel.update()
         .table('blocks')
         .set('nextblockhash', raw_block_data.hash)
-        .where('hash = \'' + raw_block_data.previousblockhash + '\'')
+        .where('hash = ?', raw_block_data.previousblockhash)
         .toString()
     }
 
@@ -423,7 +424,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
           .into('addressesoutputs')
           .set('address', address)
           .set('output_id',
-            squel.select().field('id').from('outputs').where('txid = \'' + new_utxo.txid + '\' AND n = ' + new_utxo.n))
+            squel.select().field('id').from('outputs').where('txid = ? AND n = ?', new_utxo.txid, new_utxo.n))
           .toString() + ' on conflict (address, output_id) do nothing')
       })
     }
@@ -523,7 +524,6 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       }
       async.each(transactions_datas, function (transaction_data, cb) {
         var sql_query = []
-        transaction_data = transaction_data.toJSON()
         self.fix_transaction(transaction_data, sql_query, function (err, all_fixed) {
           if (err) return cb(err)
           sql_query = sql_query.join(';\n')
@@ -594,7 +594,6 @@ Scanner.prototype.parse_cc = function (err, callback) {
         }
       })
 
-      console.log('blocks_heights.length = ', blocks_heights.length)
       if (!blocks_heights.length) {
         return setTimeout(function () {
           callback()
@@ -632,7 +631,6 @@ Scanner.prototype.parse_cc = function (err, callback) {
 
       async.each(transactions_data, function (transaction_data, cb) {
         var sql_query = []
-        transaction_data = transaction_data.toJSON()
         self.parse_cc_tx(transaction_data, sql_query)
         if (!transaction_data.iosparsed) {
           return cb()
@@ -642,7 +640,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
           .table('transactions')
           .set('ccparsed', true)
           .set('overflow', transaction_data.overflow || false)
-          .where('iosparsed AND txid = \'' + transaction_data.txid + '\'')
+          .where('iosparsed AND txid = ?', transaction_data.txid)
           .toString())
         sql_query = sql_query.join(';\n')
         emits.push(['newcctransaction', transaction_data])
@@ -659,6 +657,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
 
 Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
   if (!transaction_data.iosparsed || !transaction_data.ccdata || !transaction_data.ccdata.length) {
+    console.warn('parse_cc_tx, problem: ', JSON.stringify(transaction_data))
     return
   }
 
@@ -714,94 +713,101 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
 
 Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_block, last_block, callback) {
   console.warn('get_need_to_cc_parse_transactions_by_blocks for blocks ' + first_block + '-' + last_block)
-  var conditions = {
-    colored: true,
-    ccparsed: false,
-    blockheight: {$between: [first_block, last_block]}
-  }
-  this.Transactions.findAll({
-    where: conditions,
-    limit: 1000,
-    include: [
-      { 
-        model: this.Inputs, 
-        as: 'vin',
-        // separate: true,
-        // order: [
-        //   ['input_index', 'ASC'],
-        //   [{model: this.Assets, as: 'assets'}, {model: this.AssetsOutputs}, 'index_in_output', 'ASC']
-        // ],
-        include: [
-          {
-            model: this.Outputs,
-            as: 'previousOutput',
-            include: [
-              { model: this.Assets, as: 'assets', through: this.AssetsOutputs }
-            ]
-          }
-        ]
-      },
-      { 
-        model: this.Outputs,
-        as: 'vout',
-        // separate: true,
-        // order: [
-        //   ['n', 'ASC'],
-        //   [{model: this.Assets, as: 'assets'}, {model: this.AssetsOutputs}, 'index_in_output', 'ASC']
-        // ],
-        include: [
-          { model: this.Assets, as: 'assets', through: this.AssetsOutputs }
-        ]
-      }
-    ],
-    order: [
-      ['blockheight', 'ASC'],
-      [{model: this.Inputs, as: 'vin'}, 'input_index', 'ASC'],
-      [{model: this.Outputs, as: 'vout'}, 'n', 'ASC'],
-      [{model: this.Outputs, as: 'vout'}, {model: this.Assets, as: 'assets'}, {model: this.AssetsOutputs}, 'index_in_output', 'ASC']
-    ],
-    logging: console.warn
-  }).then(function (transactions) {
-    if (transactions.length) {
-      // transactions[0].vin.forEach(function (input) {
-      //   if (input.assets && input.assets.length) {
-          
-      //   }
-      // })
-      console.warn('get_need_to_cc_parse_transactions_by_blocks, transactions = ', JSON.stringify(transactions[0].toJSON()))
-    }
-    console.warn('get_need_to_cc_parse_transactions_by_blocks - transactions.length = ', transactions.length)
-    callback(null, transactions)
-  }).catch(function (e) {
-    console.log('get_need_to_cc_parse_transactions_by_blocks - e = ', e)
-    callback(e)
-  })
+  var query = [
+    'SELECT',
+    'transactions.txid,',
+    'transactions.iosparsed,',
+    'transactions.ccdata,',
+    'transactions.overflow,',
+    'to_json(array(',
+    '  SELECT vin FROM',
+    '    (SELECT',
+    '      inputs.*,',
+    '      to_json(array(',
+    '         SELECT assets FROM',
+    '           (SELECT',
+    '              assetsoutputs.*, assets.*',
+    '            FROM assetsoutputs INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId" WHERE assetsoutputs.output_id = inputs.output_id ORDER BY index_in_output) assets)) assets',
+    '  FROM',
+    '    inputs',
+    '  WHERE inputs.input_txid = transactions.txid',
+    '  ORDER BY input_index) vin)) vin,',
+    'to_json(array(',
+    '  SELECT vout FROM',
+    '    (SELECT',
+    '       outputs.*,',
+    '       to_json(array(SELECT assets FROM',
+    '           (SELECT',
+    '              assetsoutputs.*, assets.*',
+    '            FROM assetsoutputs INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId" WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output) assets)) assets',
+    '  FROM',
+    '    outputs',
+    '  WHERE outputs.txid = transactions.txid',
+    '  ORDER BY n) vout)) vout',
+    'FROM',
+    '  transactions',
+    'WHERE',
+    '  ccparsed = false AND',
+    '  colored = true AND',
+    '  blockheight BETWEEN ' + first_block + ' AND ' + last_block,
+    'LIMIT 1000;'
+  ]
+  query = query.join('\n')
+  this.sequelize.query(query)
+    .spread(function (transactions, metadata) {
+      // if (transactions.length) {
+      //   console.warn('get_need_to_cc_parse_transactions_by_blocks, transactions = ', JSON.stringify(transactions))
+      // }
+      console.warn('get_need_to_cc_parse_transactions_by_blocks - transactions.length = ', transactions.length)
+      callback(null, transactions)
+    })
+    .catch(function (e) {
+      console.log('get_need_to_cc_parse_transactions_by_blocks - e = ', e)
+      callback(e)
+    })
 }
 
 Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block, last_block, callback) {
-  var conditions = {
-    iosparsed: false,
-    blockheight: {$between: [first_block, last_block]}
-  }
-  this.Transactions.findAll({
-    where: conditions,
-    limit: 200,
-    attributes: ['txid', 'blockheight', 'tries', 'colored'],
-    include: [
-      { model: this.Inputs, separate: true, as: 'vin', attributes: {exclude: ['scriptSig']}, order: [['input_index', 'ASC']] },
-      { model: this.Outputs, separate: true, as: 'vout', attributes: {exclude: ['scriptPubKey']}, order: [['n', 'ASC']] }
-    ],
-    order: [
-      ['blockheight', 'ASC'],
-      ['tries', 'ASC']
-    ]
-  }).then(function (transactions) {
-    console.log('get_need_to_fix_transactions_by_blocks #1 - transactions.length = ', transactions.length)
-    callback(null, transactions)
-  }).catch(function (e) {
-    console.log('get_need_to_fix_transactions_by_blocks - e = ', e)
-    callback(e)
-  })
+  var query = squel.select({autoQuoteFieldNames: false})
+    .field('txid')
+    .field('blockheight')
+    .field('tries')
+    .field('colored')
+    .field('to_json(array(' + squel.select({autoQuoteFieldNames: false})
+      .field('vin')
+      .from(squel.select({autoQuoteFieldNames: false})
+        .field('inputs.*')
+        .from('inputs')
+        .where('inputs.input_txid = transactions.txid')
+        .order('input_index'), 'vin')
+        .toString() + '))', 'vin')
+    .field('to_json(array(' + squel.select({autoQuoteFieldNames: false})
+      .field('vout')
+      .from(squel.select({autoQuoteFieldNames: false})
+        .field('outputs.*')
+        .from('outputs')
+        .where('outputs.txid = transactions.txid')
+        .order('n'), 'vout')
+        .toString() + '))', 'vout')
+    .from('transactions')
+    .where('iosparsed = ?', false)
+    .where('blockheight BETWEEN ? AND ?', first_block, last_block)
+    .order('blockheight')
+    .order('tries')
+    .limit(200)
+    .toString() + ';'
+  this.sequelize.query(query, {logging: console.warn, benchmark: true})
+    .spread(function (transactions, metadata) {
+      // if (transactions.length) {
+      //   console.warn('get_need_to_fix_transactions_by_blocks - transactions = ', JSON.stringify(transactions))
+      // }
+      console.log('get_need_to_fix_transactions_by_blocks #1 - transactions.length = ', transactions.length)
+      callback(null, transactions)
+    })
+    .catch(function (e) {
+      console.log('get_need_to_fix_transactions_by_blocks - e = ', e)
+      callback(e)
+    })
 }
 
 Scanner.prototype.fix_transaction = function (raw_transaction_data, sql_query, callback) {
@@ -813,7 +819,7 @@ Scanner.prototype.fix_transaction = function (raw_transaction_data, sql_query, c
       .set('tries', raw_transaction_data.tries || 0)
       .set('fee', raw_transaction_data.fee || 0)
       .set('totalsent', raw_transaction_data.totalsent || 0)
-      .where('txid = \'' + raw_transaction_data.txid + '\'')
+      .where('txid = ?', raw_transaction_data.txid)
       .toString())
     callback(null, all_fixed)
   })
@@ -850,8 +856,9 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
       })
     })
     if (raw_transaction_data.txid === '520e0f70f54f06a5f4d3def9a264ad6eddf635d12a84f9b2aa4dd6ee301344b2') {
-      console.warn('fix_vin: txid ', raw_transaction_data.txid + ', in_transactions = ', JSON.stringify(in_transactions))
-      console.warn('fix_vin: txid ', raw_transaction_data.txid + ', inputsToFixNow = ', JSON.stringify(inputsToFixNow))
+      console.warn('fix_vin: txid ' + raw_transaction_data.txid + ', in_transactions = ', JSON.stringify(in_transactions))
+      console.warn('fix_vin: txid ' + raw_transaction_data.txid + ', inputsToFixNow = ', JSON.stringify(inputsToFixNow))
+      console.warn('fix_vin: txid ' + raw_transaction_data.txid + ', tries = ', raw_transaction_data.tries)
     }
 
     inputsToFixNow.forEach(function (input) {
@@ -874,7 +881,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     } else {
       raw_transaction_data.tries = raw_transaction_data.tries || 0
       raw_transaction_data.tries++
-      // console.log('fix_vin: txid ' + raw_transaction_data.txid + ', tries = ', raw_transaction_data.tries)
       if (raw_transaction_data.tries > 1000) {
         console.warn('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(inputsToFix), ') for over than 1000 tries.')
       }
@@ -946,7 +952,7 @@ Scanner.prototype.fix_input = function (input, sql_query) {
     .set('output_id', input.output_id)
     .set('value', input.value)
     .set('fixed', true)
-    .where('input_txid = \'' + input.input_txid + '\' AND input_index = ' + input.input_index)
+    .where('input_txid = ? AND input_index = ?', input.input_txid, input.input_index)
     .toString())
 }
 
@@ -956,7 +962,7 @@ Scanner.prototype.fix_used_output = function (txid, vout, usedTxid, usedBlockhei
     .set('used', true)
     .set('usedTxid', usedTxid)
     .set('usedBlockheight', usedBlockheight)
-    .where('txid = \'' + txid + '\' AND n = ' + vout)
+    .where('txid = ? AND n = ?', txid, vout)
     .toString())
 }
 
@@ -1178,7 +1184,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       if (!sql_query.length) return cb()
       sql_query = sql_query.join(';\n')
       self.sequelize.transaction(function (sql_transaction) {
-        return self.sequelize.query(sql_query, {transaction: sql_transaction, logging: console.log, benchmark: true})
+        return self.sequelize.query(sql_query, {transaction: sql_transaction, logging: console.log})
           .then(function () { cb() })
           .catch(cb)
       })
@@ -1283,7 +1289,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
         ccparsed: {$col: 'colored'}
       }
       var attributes = ['txid']
-      self.Transactions.findOne({ where: conditions, attributes: attributes, logging: console.log, benchmark: true, raw: true })
+      self.Transactions.findOne({ where: conditions, attributes: attributes, logging: console.log, raw: true })
       .then(function (tx) { cb(null, tx) })
       .catch(cb)
     },
