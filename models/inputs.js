@@ -44,8 +44,7 @@ module.exports = function (sequelize, DataTypes) {
     classMethods: {
       associate: function (models) {
         Inputs.belongsTo(models.transactions, { foreignKey: 'input_txid' })
-        Inputs.belongsTo(models.outputs, { foreignKey: 'output_id' , as: 'previousOutput', constraints: false })  // constraints=false because an input may be inserted to mempool before its corresponding output (orphand)
-        // Inputs.belongsTo(models.Transaction, { foreignKey: 'txid' }) // removed because a later transaction can be inserted to DB before its predecessor
+        Inputs.belongsTo(models.outputs, { foreignKey: 'output_id', as: 'previousOutput', constraints: false })  // constraints=false because an input may be inserted to mempool before its corresponding output (orphand)
       }
     },
     getterMethods: {

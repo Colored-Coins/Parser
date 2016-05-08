@@ -663,7 +663,6 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
 
   console.warn('parse_cc_tx ' + transaction_data.txid)
   var assetsArrays = get_assets_outputs(transaction_data)
-  console.log('assetsArrays = ', JSON.stringify(assetsArrays))
   assetsArrays.forEach(function (assetsArray, out_index) {
     if (!assetsArray || !assetsArray.length) {
       return
@@ -753,8 +752,8 @@ Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_
     'LIMIT 1000;'
   ]
   query = query.join('\n')
-  this.sequelize.query(query)
-    .spread(function (transactions, metadata) {
+  this.sequelize.query(query, {type: this.sequelize.QueryTypes.SELECT})
+    .then(function (transactions) {
       // if (transactions.length) {
       //   console.warn('get_need_to_cc_parse_transactions_by_blocks, transactions = ', JSON.stringify(transactions))
       // }
@@ -796,8 +795,8 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     .order('tries')
     .limit(200)
     .toString() + ';'
-  this.sequelize.query(query, {logging: console.warn, benchmark: true})
-    .spread(function (transactions, metadata) {
+  this.sequelize.query(query, {type: this.sequelize.QueryTypes.SELECT, logging: console.warn, benchmark: true})
+    .then(function (transactions) {
       // if (transactions.length) {
       //   console.warn('get_need_to_fix_transactions_by_blocks - transactions = ', JSON.stringify(transactions))
       // }
@@ -1148,18 +1147,8 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   console.log('parsing mempool cargo (' + txids.length + ')')
 
   txids.forEach(function (txhash) {
-    command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
+    command_arr.push({ method: 'getrawtransaction', params: [txhash, 1] })
   })
-  
-  var handleError = function (err) {
-    self.to_revert = []
-    self.mempool_txs = null
-    console.log('killing in the name of!')
-    console.error('execute cargo bulk error ', err)
-    self.mempool_cargo.kill()
-    self.emit('kill')
-    return callback(err)
-  }
 
   bitcoin_rpc.cmd(command_arr, function (raw_transaction_data, cb) {
     console.log('received result from bitcoind, raw_transaction_data.txid = ', raw_transaction_data.txid)
@@ -1170,7 +1159,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     }
     raw_transaction_data = to_discrete(raw_transaction_data)
     self.parse_new_mempool_transaction(raw_transaction_data, sql_query, emits, function (err, did_work, iosparsed, ccparsed) {
-      logger.info('parse_new_mempool: parse_new_mempool_transaction ended - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', ccparsed = ', ccparsed)
+      console.log('parse_new_mempool: parse_new_mempool_transaction ended - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', ccparsed = ', ccparsed)
       if (err) return cb(err)
       if (!did_work) {
         return cb()
@@ -1227,7 +1216,6 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     callback()
   })
 }
-
 
 Scanner.prototype.wait_for_parse = function (txid, callback) {
   var self = this
@@ -1364,19 +1352,20 @@ Scanner.prototype.transmit = function (txHex, callback) {
   })
 }
 
+/**
+ * @param {object} key-value pairs for a table insert
+ * @param {object} [options={}]
+ * @param {object} [options.exclude] keys to exclude from the given object
+ * @return {object} key-value pairs for a table insert
+*/
 var to_sql_fields = function (obj, options) {
-  var copyObj = _.cloneDeep(obj)
-  var exclude = (options && options.exclude) || []
-  Object.keys(copyObj).forEach(function (key) {
-    if (exclude.indexOf(key) > -1) {
-      delete copyObj[key]
-      return
-    }
-    if (typeof copyObj[key] === 'object') {
-      copyObj[key] = JSON.stringify(copyObj[key])
+  var ans = {}
+  Object.keys(obj).forEach(function (key) {
+    if (!options || !options.exclude || options.exclude.indexOf(key) === -1) {
+      ans[key] = (typeof obj[key] === 'object') ? JSON.stringify(obj[key]) : obj[key]
     }
   })
-  return copyObj
+  return ans
 }
 
 var to_sql_update_string = function (obj) {
