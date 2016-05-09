@@ -62,10 +62,10 @@ function Scanner (settings, db) {
   //   })
   // }
 
-  self.mempool_cargo = async.cargo(function (tasks, callback) {
-    console.log('async.cargo() - parse_mempool_cargo')
-    self.parse_mempool_cargo(tasks, callback)
-  }, /*500*/ 2)
+  // self.mempool_cargo = async.cargo(function (tasks, callback) {
+  //   console.log('async.cargo() - parse_mempool_cargo')
+  //   self.parse_mempool_cargo(tasks, callback)
+  // }, /*500*/ 2)
 }
 
 util.inherits(Scanner, events.EventEmitter)
@@ -134,6 +134,177 @@ Scanner.prototype.scan_blocks = function (err) {
     self.scan_blocks(err)
   })
 }
+
+Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
+  var self = this
+  var conditions = {
+    txid: txid
+  }
+  console.log('reverting tx ' + txid)
+  var find_transaction_query = '' +
+    'SELECT\n' +
+    '  transactions.*,\n' +
+    '  to_json(array(\n' +
+    '    SELECT\n' +
+    '      vin\n' +
+    '    FROM\n' +
+    '      (SELECT\n' +
+    '        inputs.txid,\n' +
+    '        inputs.vout\n' +
+    '      FROM\n' +
+    '        inputs\n' +
+    '      WHERE\n' +
+    '        inputs.input_txid = transactions.txid\n' +
+    '      ORDER BY input_index) AS vin)) AS vin,\n' +
+    '  to_json(array(\n' +
+    '    SELECT\n' +
+    '      vout\n' +
+    '    FROM\n' +
+    '      (SELECT\n' +
+    '        outputs.id,\n' +
+    '        outputs.n,\n' +
+    '        outputs."usedTxid",\n' +
+    '        outputs."scriptPubKey"->\'addresses\' AS addresses\n' +
+    '        to_json(array(\n' +
+    '      SELECT assets FROM\n' +
+    '        (SELECT\n' +
+    '          assetsoutputs.*, assets.*\n' +
+    '        FROM\n' +
+    '          assetsoutputs\n' +
+    '        INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId" WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output)\n' +
+    '    assets)) assets\n' +
+    '      FROM\n' +
+    '        outputs\n' +
+    '      WHERE outputs.txid = transactions.txid\n' +
+    '      ORDER BY n) AS vout)) AS vout\n' +
+    'FROM\n' +
+    '  transactions\n' +
+    'WHERE\n' +
+    '  txid = :txid'
+  self.sequelize.query(find_transaction_query, {replacements: {txid: txid}, type: self.sequelize.QueryTypes.SELECT})
+    .then(function (transactions) {
+      if (!transactions || !transactions.length) return callback()
+      var transaction = transactions[0]
+      async.waterfall([
+        function (cb) {
+          // logger.debug('reverting vin')
+          self.revert_vin(tx, sql_query, cb)
+        },
+        function (cb) {
+          // logger.debug('reverting vout')
+          self.revert_vout(tx.txid, tx.vout, sql_query)
+          // logger.debug('vout reverted')
+        }
+      ],
+      function (err, txids) {
+        if (err) return callback(err)
+        raw_transaction_bulk.find(conditions).remove()
+        // logger.debug('tx '+txid+' reverted.')
+        callback(null, tx.colored, txids)
+      })
+    })
+    .catch(callback)
+}
+
+// Scanner.prototype.revert_vin = function (tx, sql_query, callback) {
+//   var txid = tx.txid
+//   var vins = tx.vin
+
+//   self.Outputs.update({
+//     where: 
+//   })
+// }
+
+// Scanner.prototype.revert_vin = function (tx, sql_query, callback) {
+//   var txid = tx.txid
+//   var inputs = tx.vin
+//   if (!inputs || !inputs.length || inputs[0].coinbase) return callback()
+//   var conditions = []
+//   inputs.forEach(function (vin) {
+//     conditions.push({
+//       txid: vin.txid,
+//       index: vin.vout,
+//       used: true
+//     })
+//   })
+//   conditions = {
+//     $or: conditions
+//   }
+//   this.Outputs.findAll(conditions).exec(function (err, useds) {
+//     if (err) return callback(err)
+//     if (!useds || !useds.length) return callback()
+//     useds.forEach(function (used) {
+//       if (used.usedTxid === txid) {
+//         if (used.addresses) {
+//           used.addresses.forEach(function (address) {
+//             var address_tx = {
+//               address: address,
+//               txid: txid
+//             }
+//             addresses_transactions_bulk.find(address_tx).remove()
+
+//             if (used.assets && used.assets.length) {
+//               used.assets.forEach(function (asset) {
+//                 var asset_tx = {
+//                   assetId: asset.assetId,
+//                   txid: txid
+//                 }
+//                 assets_transactions_bulk.find(asset_tx).remove()
+//               })
+//             }
+//           })
+//         }
+//         var cond = {
+//           txid: used.txid,
+//           index: used.index
+//         }
+//         utxo_bulk.find(cond).updateOne({
+//           $set: {
+//             used: false,
+//             usedBlockheight: null,
+//             usedTxid: null
+//           }
+//         })
+//       }
+//     })
+//     callback()
+//   })
+// }
+
+// Scanner.prototype.revert_vout = function (txid, outputs, sql_query) {
+//   var self = this
+//   if (!outputs || !outputs.length) return callback(null, [])
+//   outputs.forEach(function (output) {
+//     if (output.addresses) {
+//       output.addresses.forEach(function (address) {
+//         sql_query.push(squel.delete()
+//           .from('addressesoutputs')
+//           .where('address = ? AND output_id = ?', address, output.id)
+//           .toString())
+//         sql_query.push(squel.delete()
+//           .from('addressestransactions')
+//           .where('address = ? AND txid = ?', address, txid)
+//           .toString())
+//       })
+//     }
+//     if (output.assets && output.assets.length) {
+//       output.assets.forEach(function (asset) {
+//         sql_query.push(squel.delete()
+//           .from('assetstransactions')
+//           .where('"assetId" = ? AND txid = ?', asset.assetId, txid)
+//           .toString())
+//         sql_query.push(squel.delete()
+//           .from('assetsoutputs')
+//           .where('"assetId" = ? AND output_id = ?', asset.assetId, output.id)
+//           .toString())
+//       })
+//     }
+//     sql_query.push(squel.delete()
+//       .from('outputs')
+//       .where('id = ?', output.id)
+//       .toString())
+//   })
+// }
 
 Scanner.prototype.get_next_block_to_fix = function (limit, callback) {
   var conditions = {
@@ -223,10 +394,8 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
 
   var command_arr = []
 
+  self.to_revert = []
   raw_block_data.tx.forEach(function (txhash) {
-    if (~self.to_revert.indexOf(txhash)) {
-      self.to_revert = []
-    }
     if (self.mempool_txs) {
       var mempool_tx_index = -1
       self.mempool_txs.forEach(function (mempool_tx, i) {
@@ -646,7 +815,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
         emits.push(['newcctransaction', transaction_data])
         emits.push(['newtransaction', transaction_data])
         self.sequelize.transaction(function (sql_transaction) {
-          return self.sequelize.query(sql_query, {transaction: sql_transaction, logging: console.log})
+          return self.sequelize.query(sql_query, {transaction: sql_transaction})
             .then(function () { cb() })
             .catch(cb)
         })
@@ -657,11 +826,10 @@ Scanner.prototype.parse_cc = function (err, callback) {
 
 Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
   if (!transaction_data.iosparsed || !transaction_data.ccdata || !transaction_data.ccdata.length) {
-    console.warn('parse_cc_tx, problem: ', JSON.stringify(transaction_data))
+    // console.warn('parse_cc_tx, problem: ', JSON.stringify(transaction_data))
     return
   }
 
-  console.warn('parse_cc_tx ' + transaction_data.txid)
   var assetsArrays = get_assets_outputs(transaction_data)
   assetsArrays.forEach(function (assetsArray, out_index) {
     if (!assetsArray || !assetsArray.length) {
@@ -688,7 +856,6 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
         .set('txid', transaction_data.txid)
         .set('type', type)
         .toString() + ' on conflict ("assetId", txid) do nothing')
-      console.warn('parse_cc_tx - inserting asset ' + asset.assetId + ' into output ' + transaction_data.txid + ':' + out_index)
       sql_query.push(squel.insert()
         .into('assetsoutputs')
         .set('assetId', asset.assetId)
@@ -795,7 +962,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     .order('tries')
     .limit(200)
     .toString() + ';'
-  this.sequelize.query(query, {type: this.sequelize.QueryTypes.SELECT, logging: console.warn, benchmark: true})
+  this.sequelize.query(query, {type: this.sequelize.QueryTypes.SELECT, benchmark: true})
     .then(function (transactions) {
       // if (transactions.length) {
       //   console.warn('get_need_to_fix_transactions_by_blocks - transactions = ', JSON.stringify(transactions))
@@ -854,11 +1021,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
         }
       })
     })
-    if (raw_transaction_data.txid === '520e0f70f54f06a5f4d3def9a264ad6eddf635d12a84f9b2aa4dd6ee301344b2') {
-      console.warn('fix_vin: txid ' + raw_transaction_data.txid + ', in_transactions = ', JSON.stringify(in_transactions))
-      console.warn('fix_vin: txid ' + raw_transaction_data.txid + ', inputsToFixNow = ', JSON.stringify(inputsToFixNow))
-      console.warn('fix_vin: txid ' + raw_transaction_data.txid + ', tries = ', raw_transaction_data.tries)
-    }
 
     inputsToFixNow.forEach(function (input) {
       self.fix_input(input, sql_query)
@@ -867,7 +1029,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
 
     var all_fixed = (inputsToFixNow.length === Object.keys(inputsToFix).length)
     if (!all_fixed) {
-      console.log('fix_vin: txid ', raw_transaction_data.txid + ' all_fixed = false. inputsToFixNow.length = ' + inputsToFixNow.length + ', inputsToFix.length = ' + Object.keys(inputsToFix).length)
+      // console.log('fix_vin: txid ', raw_transaction_data.txid + ' all_fixed = false. inputsToFixNow.length = ' + inputsToFixNow.length + ', inputsToFix.length = ' + Object.keys(inputsToFix).length)
     }
     if (all_fixed) {
       calc_fee(raw_transaction_data)
@@ -1027,7 +1189,6 @@ Scanner.prototype.get_next_block_to_cc_parse = function (limit, callback) {
 }
 
 Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data, sql_query, emits, callback) {
-  console.log('parse_new_mempool_transaction - txid = ', raw_transaction_data.txid)
   var self = this
   var transaction_data
   var did_work = false
@@ -1069,7 +1230,6 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       }
     },
     function (l_blockheight, cb) {
-      console.log('parse_new_mempool_transaction: l_blockheight = ' + l_blockheight)
       blockheight = l_blockheight
       if (transaction_data) return cb()
       if (raw_transaction_data.time) {
@@ -1133,7 +1293,6 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
 }
 
 Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
-  console.log('parse_mempool_cargo - txids = ', txids)
   var self = this
 
   var new_mempool_txs = []
@@ -1173,7 +1332,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       if (!sql_query.length) return cb()
       sql_query = sql_query.join(';\n')
       self.sequelize.transaction(function (sql_transaction) {
-        return self.sequelize.query(sql_query, {transaction: sql_transaction, logging: console.log})
+        return self.sequelize.query(sql_query, {transaction: sql_transaction})
           .then(function () { cb() })
           .catch(cb)
       })
@@ -1215,6 +1374,195 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     })
     callback()
   })
+}
+
+Scanner.prototype.revert_txids = function (callback) {
+  var self = this
+
+  self.to_revert = _.uniq(self.to_revert)
+  if (!self.to_revert.length) return callback()
+  console.log('need to revert ' + self.to_revert.length + ' txs from mempool.')
+  var n_batch = 100
+  // async.whilst(function () { return self.to_revert.length },
+    // function (cb) {
+      var txids = self.to_revert.slice(0, n_batch)
+      console.log('reverting txs (' + txids.length + ',' + self.to_revert.length + ')')
+
+      // logger.debug('reverting '+block_data.tx.length+' txs.')
+      var regular_txids = []
+      var colored_txids = []
+
+      var sql_query = []
+      async.map(txids, function (txid, cb) {
+        bitcoin_rpc.cmd('getrawtransaction', [txid], function (err, raw_transaction_data) {
+          if (err || !raw_transaction_data || !raw_transaction_data.confirmations) {
+            regular_txids.push(txid)
+            self.revert_tx(txid, sql_query, function (err, colored, revert_flags_txids) {
+              if (err) return cb(err)
+              if (colored) {
+                colored_txids.push(txid)
+              }
+              cb(null, revert_flags_txids)
+            })
+          } else {
+            console.log('found tx that do not need to revert', txid)
+            if (~self.to_revert.indexOf(txid)) {
+              self.to_revert.splice(self.to_revert.indexOf(txid), 1)
+            }
+            // No need for now....
+            // if blockhash
+            // get blockheight
+            // parse tx (first parse)
+            // if not iosfixed - set block as not fixed
+            // if colored and not cc_parsed - set block as not cc_parsed
+            cb(null, [])
+          }
+        })
+      },
+      function (err, revert_flags_txids) {
+        if (err) return cb(err)
+        revert_flags_txids = [].concat.apply([], revert_flags_txids)
+        revert_flags_txids = _.uniq(revert_flags_txids)
+        console.log('revert flags txids:', revert_flags_txids)
+        raw_transaction_bulk.find({txid: {$in: revert_flags_txids }}).update({$set: {iosparsed: false, ccparsed: false}})
+        // logger.debug('executing bulks')
+        execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
+          if (err) return cb(err)
+          regular_txids.forEach(function (txid) {
+            self.emit('revertedtransaction', {txid: txid})
+          })
+          colored_txids.forEach(function (txid) {
+            self.emit('revertedcctransaction', {txid: txid})
+          })
+          self.to_revert = []
+          callback()
+        })
+      })
+  //   },
+  //   callback
+  // )
+}
+
+Scanner.prototype.parse_new_mempool = function (callback) {
+  var self = this
+
+  var db_parsed_txids = []
+  var db_unparsed_txids = []
+  var new_txids
+  var cargo_size
+
+  if (properties.scanner.mempool !== 'true') return callback()
+  console.log('start reverting (if needed)')
+  async.waterfall([
+    function (cb) {
+      self.revert_txids(cb)
+    },
+    function (cb) {
+      console.log('end reverting (if needed)')
+      if (!self.mempool_txs) {
+        self.emit('mempool')
+        var conditions = {
+          blockheight: -1
+        }
+        var projection = {
+          txid: 1,
+          iosparsed: 1,
+          colored: 1,
+          ccparsed: 1,
+          _id: 0
+        }
+        var limit = 10000
+        var has_next = true
+        var skip = 0
+        self.mempool_txs = []
+        async.whilst(function () { return has_next },
+          function (cb) {
+            console.time('find mempool db txs')
+            self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}).lean().exec(function (err, transactions) {
+              console.timeEnd('find mempool db txs')
+              if (err) return cb(err)
+              console.time('processing mempool db txs')
+              self.mempool_txs = self.mempool_txs.concat(transactions)
+              transactions.forEach(function (transaction) {
+                if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
+                  db_parsed_txids.push(transaction.txid)
+                } else {
+                  db_unparsed_txids.push(transaction.txid)
+                }
+              })
+              console.timeEnd('processing mempool db txs')
+              if (transactions.length === limit) {
+                console.log('getting txs', skip + 1, '-', skip + limit)
+                skip += limit
+              } else {
+                has_next = false
+              }
+              cb()
+            })
+          },
+        cb)
+      } else {
+        console.log('getting mempool from memory cache')
+        self.mempool_txs.forEach(function (transaction) {
+          if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
+            db_parsed_txids.push(transaction.txid)
+          } else {
+            db_unparsed_txids.push(transaction.txid)
+          }
+        })
+        cb()
+      }
+
+    },
+    function (cb) {
+      console.log('start find mempool bitcoind txs')
+      bitcoin_rpc.cmd('getrawmempool', [], cb)
+    },
+    function (whole_txids, cb) {
+      whole_txids = whole_txids || []
+      console.log('end find mempool bitcoind txs')
+      console.log('parsing mempool txs (' + whole_txids.length + ')')
+      console.log('start xoring')
+      var txids_intersection = _.intersection(db_parsed_txids, whole_txids) // txids that allready parsed in db
+      new_txids = _.xor(txids_intersection, whole_txids) // txids that not parsed in db
+      db_parsed_txids = _.xor(txids_intersection, db_parsed_txids) // the rest of the txids in the db (not yet found in mempool)
+      txids_intersection = _.intersection(db_unparsed_txids, whole_txids) // txids that in mempool and db but not fully parsed
+      db_unparsed_txids = _.xor(txids_intersection, db_unparsed_txids) // the rest of the txids in the db (not yet found in mempool, not fully parsed)
+      console.log('end xoring')
+      new_txids.push('PH')
+      console.log('parsing new mempool txs (' + (new_txids.length - 1) + ')')
+      cargo_size = new_txids.length
+      var ended = 0
+      var end_func = function () {
+        if (!ended++) {
+          self.removeListener('kill', end_func)
+          console.log('mempool cargo ended.')
+          cb()
+        }
+      }
+      self.once('kill', end_func)
+      self.mempool_cargo.push(new_txids, function () {
+        if (!--cargo_size) {
+          var db_txids = db_parsed_txids.concat(db_unparsed_txids)
+          self.to_revert = self.to_revert.concat(db_txids)
+          db_txids.forEach(function (txid) {
+            if (self.mempool_txs) {
+              var mempool_tx_index = -1
+              self.mempool_txs.forEach(function (mempool_tx, i) {
+                if (!~mempool_tx_index && mempool_tx.txid === txid) {
+                  mempool_tx_index = i
+                }
+              })
+              if (~mempool_tx_index) {
+                self.mempool_txs.splice(mempool_tx_index, 1)
+              }
+            }
+          })
+          end_func()
+        }
+      })
+    }
+  ], callback)
 }
 
 Scanner.prototype.wait_for_parse = function (txid, callback) {
@@ -1277,7 +1625,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
         ccparsed: {$col: 'colored'}
       }
       var attributes = ['txid']
-      self.Transactions.findOne({ where: conditions, attributes: attributes, logging: console.log, raw: true })
+      self.Transactions.findOne({ where: conditions, attributes: attributes, raw: true })
       .then(function (tx) { cb(null, tx) })
       .catch(cb)
     },
