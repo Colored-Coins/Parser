@@ -1043,7 +1043,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
       raw_transaction_data.tries = raw_transaction_data.tries || 0
       raw_transaction_data.tries++
       if (raw_transaction_data.tries > 1000) {
-        console.warn('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(inputsToFix), ') for over than 1000 tries.')
+        // console.warn('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(inputsToFix), ') for over than 1000 tries.')
       }
     }
     callback(null, all_fixed)
