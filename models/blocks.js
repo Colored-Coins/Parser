@@ -40,7 +40,7 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.STRING
     },
     difficulty: {
-      type: DataTypes.BIGINT
+      type: DataTypes.DOUBLE
     },
     chainwork: {
       type: DataTypes.STRING
