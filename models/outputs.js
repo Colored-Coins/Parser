@@ -25,7 +25,7 @@ module.exports = function (sequelize, DataTypes) {
       type: bitcoinDataTypes.hashType
     },
     usedBlockheight: {
-      type: DataTypes.BIGINT
+      type: DataTypes.INTEGER
     },
     value: {
       type: DataTypes.BIGINT

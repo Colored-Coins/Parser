@@ -5,7 +5,7 @@ var bitcoinDataTypes = require('./bitcoinDataTypes')
 module.exports = function (sequelize, DataTypes) {
   var Transactions = sequelize.define('transactions', {
     blockheight: {
-      type: DataTypes.BIGINT
+      type: DataTypes.INTEGER
     },
     blockhash: {
       type: bitcoinDataTypes.hashType

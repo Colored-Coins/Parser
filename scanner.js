@@ -137,13 +137,10 @@ Scanner.prototype.scan_blocks = function (err) {
 
 Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
   var self = this
-  var conditions = {
-    txid: txid
-  }
   console.log('reverting tx ' + txid)
   var find_transaction_query = '' +
     'SELECT\n' +
-    '  transactions.*,\n' +
+    '  transactions.colored,\n' +
     '  to_json(array(\n' +
     '    SELECT\n' +
     '      vin\n' +
@@ -162,17 +159,7 @@ Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
     '    FROM\n' +
     '      (SELECT\n' +
     '        outputs.id,\n' +
-    '        outputs.n,\n' +
-    '        outputs."usedTxid",\n' +
-    '        outputs."scriptPubKey"->\'addresses\' AS addresses\n' +
-    '        to_json(array(\n' +
-    '      SELECT assets FROM\n' +
-    '        (SELECT\n' +
-    '          assetsoutputs.*, assets.*\n' +
-    '        FROM\n' +
-    '          assetsoutputs\n' +
-    '        INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId" WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output)\n' +
-    '    assets)) assets\n' +
+    '        outputs.usedTxid,\n' +
     '      FROM\n' +
     '        outputs\n' +
     '      WHERE outputs.txid = transactions.txid\n' +
@@ -184,127 +171,67 @@ Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
   self.sequelize.query(find_transaction_query, {replacements: {txid: txid}, type: self.sequelize.QueryTypes.SELECT})
     .then(function (transactions) {
       if (!transactions || !transactions.length) return callback()
+      var next_txids = []
       var transaction = transactions[0]
-      async.waterfall([
-        function (cb) {
-          // logger.debug('reverting vin')
-          self.revert_vin(tx, sql_query, cb)
-        },
-        function (cb) {
-          // logger.debug('reverting vout')
-          self.revert_vout(tx.txid, tx.vout, sql_query)
-          // logger.debug('vout reverted')
+      self.revert_vin(txid, transaction.vout, sql_query)
+      self.revert_vout(transaction.vin, sql_query)
+      sql_query.push(squel.delete()
+        .from('addressestransactions')
+        .where('txid = ?', txid)
+        .toString())
+      sql_query.push(squel.delete()
+        .from('assetstransactions')
+        .where('txid = ?', txid)
+        .toString())
+      sql_query.push(squel.delete()
+        .from('transactions')
+        .where('txid = ?', txid)
+        .toString())
+
+      transaction.vout.forEach(function (output) {
+        if (output.usedTxid && next_txids.indexOf(output.usedTxid) === -1) {
+          next_txids.push(output.usedTxid)
         }
-      ],
-      function (err, txids) {
-        if (err) return callback(err)
-        raw_transaction_bulk.find(conditions).remove()
-        // logger.debug('tx '+txid+' reverted.')
-        callback(null, tx.colored, txids)
       })
+      callback(null, transaction.colored, next_txids)
     })
     .catch(callback)
 }
 
-// Scanner.prototype.revert_vin = function (tx, sql_query, callback) {
-//   var txid = tx.txid
-//   var vins = tx.vin
+Scanner.prototype.revert_vin = function (txid, vin, sql_query) {
+  if (!vin || !vin.length || vin[0].coinbase) return
+  vin.forEach(function (input) {
+    sql_query.push(squel.update()
+      .from('outputs')
+      .set('used', false)
+      .set('usedTxid', null)
+      .set('usedBlockheight', null)
+      .where('txid = ? AND n = ? AND usedTxid = ?', input.txid, input.vout, txid)
+      .toString())
+    sql_query.push(squel.delete()
+      .from('inputs')
+      .where('txid = ? AND vout = ?', input.txid, input.vout)
+      .toString())
+  })
+}
 
-//   self.Outputs.update({
-//     where: 
-//   })
-// }
-
-// Scanner.prototype.revert_vin = function (tx, sql_query, callback) {
-//   var txid = tx.txid
-//   var inputs = tx.vin
-//   if (!inputs || !inputs.length || inputs[0].coinbase) return callback()
-//   var conditions = []
-//   inputs.forEach(function (vin) {
-//     conditions.push({
-//       txid: vin.txid,
-//       index: vin.vout,
-//       used: true
-//     })
-//   })
-//   conditions = {
-//     $or: conditions
-//   }
-//   this.Outputs.findAll(conditions).exec(function (err, useds) {
-//     if (err) return callback(err)
-//     if (!useds || !useds.length) return callback()
-//     useds.forEach(function (used) {
-//       if (used.usedTxid === txid) {
-//         if (used.addresses) {
-//           used.addresses.forEach(function (address) {
-//             var address_tx = {
-//               address: address,
-//               txid: txid
-//             }
-//             addresses_transactions_bulk.find(address_tx).remove()
-
-//             if (used.assets && used.assets.length) {
-//               used.assets.forEach(function (asset) {
-//                 var asset_tx = {
-//                   assetId: asset.assetId,
-//                   txid: txid
-//                 }
-//                 assets_transactions_bulk.find(asset_tx).remove()
-//               })
-//             }
-//           })
-//         }
-//         var cond = {
-//           txid: used.txid,
-//           index: used.index
-//         }
-//         utxo_bulk.find(cond).updateOne({
-//           $set: {
-//             used: false,
-//             usedBlockheight: null,
-//             usedTxid: null
-//           }
-//         })
-//       }
-//     })
-//     callback()
-//   })
-// }
-
-// Scanner.prototype.revert_vout = function (txid, outputs, sql_query) {
-//   var self = this
-//   if (!outputs || !outputs.length) return callback(null, [])
-//   outputs.forEach(function (output) {
-//     if (output.addresses) {
-//       output.addresses.forEach(function (address) {
-//         sql_query.push(squel.delete()
-//           .from('addressesoutputs')
-//           .where('address = ? AND output_id = ?', address, output.id)
-//           .toString())
-//         sql_query.push(squel.delete()
-//           .from('addressestransactions')
-//           .where('address = ? AND txid = ?', address, txid)
-//           .toString())
-//       })
-//     }
-//     if (output.assets && output.assets.length) {
-//       output.assets.forEach(function (asset) {
-//         sql_query.push(squel.delete()
-//           .from('assetstransactions')
-//           .where('"assetId" = ? AND txid = ?', asset.assetId, txid)
-//           .toString())
-//         sql_query.push(squel.delete()
-//           .from('assetsoutputs')
-//           .where('"assetId" = ? AND output_id = ?', asset.assetId, output.id)
-//           .toString())
-//       })
-//     }
-//     sql_query.push(squel.delete()
-//       .from('outputs')
-//       .where('id = ?', output.id)
-//       .toString())
-//   })
-// }
+Scanner.prototype.revert_vout = function (vout, sql_query) {
+  if (!vout || !vout.length) return
+  vout.forEach(function (output) {
+    sql_query.push(squel.delete()
+      .from('addressesoutputs')
+      .where('output_id = ?', output.id)
+      .toString())
+    sql_query.push(squel.delete()
+      .from('assetsoutputs')
+      .where('output_id = ?', output.id)
+      .toString())
+    sql_query.push(squel.delete()
+      .from('outputs')
+      .where('id = ?', output.id)
+      .toString())
+  })
+}
 
 Scanner.prototype.get_next_block_to_fix = function (limit, callback) {
   var conditions = {
@@ -1391,17 +1318,22 @@ Scanner.prototype.revert_txids = function (callback) {
       var regular_txids = []
       var colored_txids = []
 
-      var sql_query = []
       async.map(txids, function (txid, cb) {
         bitcoin_rpc.cmd('getrawtransaction', [txid], function (err, raw_transaction_data) {
           if (err || !raw_transaction_data || !raw_transaction_data.confirmations) {
             regular_txids.push(txid)
+            var sql_query = []
             self.revert_tx(txid, sql_query, function (err, colored, revert_flags_txids) {
               if (err) return cb(err)
               if (colored) {
                 colored_txids.push(txid)
               }
-              cb(null, revert_flags_txids)
+              sql_query = sql_query.join(';\n')
+              self.sequelize.transaction(function (sql_transaction) {
+                return self.sequelize.query(sql_query)
+                  .then(function () { cb(null, revert_flags_txids) })
+                  .catch(cb)
+              })
             })
           } else {
             console.log('found tx that do not need to revert', txid)
@@ -1419,23 +1351,29 @@ Scanner.prototype.revert_txids = function (callback) {
         })
       },
       function (err, revert_flags_txids) {
-        if (err) return cb(err)
+        if (err) return callback(err)
         revert_flags_txids = [].concat.apply([], revert_flags_txids)
         revert_flags_txids = _.uniq(revert_flags_txids)
         console.log('revert flags txids:', revert_flags_txids)
-        raw_transaction_bulk.find({txid: {$in: revert_flags_txids }}).update({$set: {iosparsed: false, ccparsed: false}})
-        // logger.debug('executing bulks')
-        execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
-          if (err) return cb(err)
-          regular_txids.forEach(function (txid) {
-            self.emit('revertedtransaction', {txid: txid})
+        var sql_query = squel.update()
+          .table('transactions')
+          .set('iosparsed', false)
+          .set('ccparsed', false)
+          .where('txid IN ?', revert_flags_txids)
+          .toString() + ';'
+
+        return self.sequelize.query(sql_query, {logging: console.log, benchmark: true})
+          .then(function () {
+            regular_txids.forEach(function (txid) {
+              self.emit('revertedtransaction', {txid: txid})
+            })
+            colored_txids.forEach(function (txid) {
+              self.emit('revertedcctransaction', {txid: txid})
+            })
+            self.to_revert = []
+            callback()
           })
-          colored_txids.forEach(function (txid) {
-            self.emit('revertedcctransaction', {txid: txid})
-          })
-          self.to_revert = []
-          callback()
-        })
+          .catch(callback)
       })
   //   },
   //   callback

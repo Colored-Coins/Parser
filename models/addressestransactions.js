@@ -5,7 +5,7 @@ var bitcoinDataTypes = require('./bitcoinDataTypes')
 module.exports = function (sequelize, DataTypes) {
   var AddressesTransactions = sequelize.define('addressestransactions', {
     txid: {
-      type: DataTypes.STRING,
+      type: bitcoinDataTypes.hashType,
       primaryKey: true
     },
     address: {
