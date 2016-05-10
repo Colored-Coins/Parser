@@ -38,34 +38,34 @@ function Scanner (settings, db) {
   self.AssetsAddresses = db.assetsaddresses
   self.Assets = db.assets
 
-  // if (process.env.ROLE !== properties.roles.API) {
-  //   self.on('newblock', function (newblock) {
-  //     process.send({to: properties.roles.API, newblock: newblock})
-  //   })
-  //   self.on('newtransaction', function (newtransaction) {
-  //     process.send({to: properties.roles.API, newtransaction: newtransaction})
-  //   })
-  //   self.on('newcctransaction', function (newcctransaction) {
-  //     process.send({to: properties.roles.API, newcctransaction: newcctransaction})
-  //   })
-  //   self.on('revertedblock', function (revertedblock) {
-  //     process.send({to: properties.roles.API, revertedblock: revertedblock})
-  //   })
-  //   self.on('revertedtransaction', function (revertedtransaction) {
-  //     process.send({to: properties.roles.API, revertedtransaction: revertedtransaction})
-  //   })
-  //   self.on('revertedcctransaction', function (revertedcctransaction) {
-  //     process.send({to: properties.roles.API, revertedcctransaction: revertedcctransaction})
-  //   })
-  //   self.on('mempool', function () {
-  //     process.send({to: properties.roles.API, mempool: true})
-  //   })
-  // }
+  if (process.env.ROLE !== properties.roles.API) {
+    self.on('newblock', function (newblock) {
+      process.send({to: properties.roles.API, newblock: newblock})
+    })
+    self.on('newtransaction', function (newtransaction) {
+      process.send({to: properties.roles.API, newtransaction: newtransaction})
+    })
+    self.on('newcctransaction', function (newcctransaction) {
+      process.send({to: properties.roles.API, newcctransaction: newcctransaction})
+    })
+    self.on('revertedblock', function (revertedblock) {
+      process.send({to: properties.roles.API, revertedblock: revertedblock})
+    })
+    self.on('revertedtransaction', function (revertedtransaction) {
+      process.send({to: properties.roles.API, revertedtransaction: revertedtransaction})
+    })
+    self.on('revertedcctransaction', function (revertedcctransaction) {
+      process.send({to: properties.roles.API, revertedcctransaction: revertedcctransaction})
+    })
+    self.on('mempool', function () {
+      process.send({to: properties.roles.API, mempool: true})
+    })
+  }
 
-  // self.mempool_cargo = async.cargo(function (tasks, callback) {
-  //   console.log('async.cargo() - parse_mempool_cargo')
-  //   self.parse_mempool_cargo(tasks, callback)
-  // }, /*500*/ 2)
+  self.mempool_cargo = async.cargo(function (tasks, callback) {
+    console.log('async.cargo() - parse_mempool_cargo')
+    self.parse_mempool_cargo(tasks, callback)
+  }, 500)
 }
 
 util.inherits(Scanner, events.EventEmitter)
@@ -1119,25 +1119,34 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   var transaction_data
   var did_work = false
   var blockheight = -1
-  var conditions = {
-    txid: raw_transaction_data.txid
-  }
   async.waterfall([
     function (cb) {
-      self.Transactions.findOne({
-        where: conditions,
-        attributes: {exclude: ['index_in_block']},
-        include: [
-          { model: self.Inputs, as: 'vin', attributes: {exclude: ['output_id', 'input_txid', 'input_index']}, include: [
-            { model: self.Outputs, as: 'previousOutput', attributes: {exclude: ['id', 'txid']} }
-          ]},
-          { model: self.Outputs, as: 'vout', attributes: {exclude: ['id', 'txid']} }
-        ],
-        order: [
-          [{model: self.Inputs, as: 'vin'}, 'input_index', 'ASC'],
-          [{model: self.Outputs, as: 'vout'}, 'n', 'ASC']
-        ]
-      }).then(function (tx) { cb(null, tx) }).catch(cb)
+      var find_transaction_query = '' +
+        'SELECT\n' +
+        '  transactions.*,\n' +
+        '  to_json(array(\n' +
+        '    SELECT\n' +
+        '      inputs\n' +
+        '    FROM\n' +
+        '      inputs\n' +
+        '    WHERE\n' +
+        '      inputs.input_txid = transactions.txid\n' +
+        '    ORDER BY input_index)) AS vin,\n' +
+        '  to_json(array(\n' +
+        '    SELECT\n' +
+        '      outputs\n' +
+        '    FROM\n' +
+        '      outputs\n' +
+        '    WHERE\n' +
+        '      outputs.txid = transactions.txid\n' +
+        '    ORDER BY n)) AS vout\n' +
+        'FROM\n' +
+        '  transactions\n' +
+        'WHERE\n' +
+        '  transactions.txid = :txid;'
+      self.sequelize.query(find_transaction_query, {replacements: {txid: raw_transaction_data.txid}, type: self.sequelize.QueryTypes.SELECT, logging: console.log, benchmark: true})
+        .then(function (transactions) { cb(null, transactions[0]) })
+        .catch(cb)
     },
     function (l_transaction_data, cb) {
       transaction_data = l_transaction_data
@@ -1202,7 +1211,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
           // put this query first because of outputs and inputs foreign key constraints, validate trasnaction in DB
           sql_query.unshift(squel.insert()
             .into('transactions')
-            .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations']}))
+            .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations', 'index_in_block']}))
             .toString() + ' on conflict (txid) do update set ' + to_sql_update_string({iosparsed: raw_transaction_data.iosparsed, ccparsed: raw_transaction_data.ccparsed}))
         }
         cb()
@@ -1269,7 +1278,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       if ('code' in err && err.code === -5) {
         console.error('Can\'t find tx.')
       } else {
-        console.error('parse_mempool_cargo: ' + err)
+        console.error('parse_mempool_cargo: ', err)
         return callback(err)
       }
     }
@@ -1401,23 +1410,22 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         var conditions = {
           blockheight: -1
         }
-        var projection = {
-          txid: 1,
-          iosparsed: 1,
-          colored: 1,
-          ccparsed: 1,
-          _id: 0
-        }
+        var attributes = ['txid', 'iosparsed', 'colored', 'ccparsed']
         var limit = 10000
         var has_next = true
-        var skip = 0
+        var offset = 0
         self.mempool_txs = []
         async.whilst(function () { return has_next },
           function (cb) {
             console.time('find mempool db txs')
-            self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}).lean().exec(function (err, transactions) {
+            self.Transactions.findAll({
+              where: conditions,
+              attributes: attributes,
+              limit: limit,
+              offset: offset,
+              raw: true
+            }).then(function (transactions) {
               console.timeEnd('find mempool db txs')
-              if (err) return cb(err)
               console.time('processing mempool db txs')
               self.mempool_txs = self.mempool_txs.concat(transactions)
               transactions.forEach(function (transaction) {
@@ -1429,13 +1437,13 @@ Scanner.prototype.parse_new_mempool = function (callback) {
               })
               console.timeEnd('processing mempool db txs')
               if (transactions.length === limit) {
-                console.log('getting txs', skip + 1, '-', skip + limit)
-                skip += limit
+                console.log('getting txs', offset + 1, '-', offset + limit)
+                offset += limit
               } else {
                 has_next = false
               }
               cb()
-            })
+            }).catch(cb)
           },
         cb)
       } else {
@@ -1449,7 +1457,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         })
         cb()
       }
-
     },
     function (cb) {
       console.log('start find mempool bitcoind txs')
@@ -1647,7 +1654,12 @@ var to_sql_fields = function (obj, options) {
   var ans = {}
   Object.keys(obj).forEach(function (key) {
     if (!options || !options.exclude || options.exclude.indexOf(key) === -1) {
-      ans[key] = (typeof obj[key] === 'object') ? JSON.stringify(obj[key]) : obj[key]
+      if (typeof obj[key] === 'object') {
+        ans[key] = JSON.stringify(obj[key])
+        if (ans[key] === 'null') delete ans[key]
+      } else {
+        ans[key] = obj[key]
+      }
     }
   })
   return ans
