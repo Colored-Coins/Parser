@@ -1,6 +1,6 @@
 'use strict'
 
-var bitcoinDataTypes = require('./bitcoinDataTypes')
+var ColoredCoinsDataTypes = require('./coloredCoinsDataTypes')
 
 module.exports = function (sequelize, DataTypes) {
   var Outputs = sequelize.define('outputs', {
@@ -10,11 +10,11 @@ module.exports = function (sequelize, DataTypes) {
       autoIncrement: true
     },
     txid: {
-      type: bitcoinDataTypes.hashType,
+      type: ColoredCoinsDataTypes.HASH,
       unique: 'output_id'
     },
     n: {
-      type: DataTypes.INTEGER,
+      type: 'SMALLINT',
       unique: 'output_id'
     },
     used: {
@@ -22,7 +22,7 @@ module.exports = function (sequelize, DataTypes) {
       defaultValue: false
     },
     usedTxid: {
-      type: bitcoinDataTypes.hashType
+      type: ColoredCoinsDataTypes.HASH
     },
     usedBlockheight: {
       type: DataTypes.INTEGER

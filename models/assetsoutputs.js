@@ -1,11 +1,11 @@
 'use strict'
 
-var bitcoinDataTypes = require('./bitcoinDataTypes')
+var ColoredCoinsDataTypes = require('./coloredCoinsDataTypes')
 
 module.exports = function (sequelize, DataTypes) {
   var AssetsOutputs = sequelize.define('assetsoutputs', {
     assetId: {
-      type: bitcoinDataTypes.assetIdType,
+      type: ColoredCoinsDataTypes.ASSETID,
       primaryKey: true
     },
     output_id: {
@@ -13,7 +13,7 @@ module.exports = function (sequelize, DataTypes) {
       primaryKey: true
     },
     index_in_output: {
-      type: DataTypes.INTEGER,
+      type: 'SMALLINT',
       primaryKey: true
     },
     amount: {
@@ -21,7 +21,7 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false
     },
     issueTxid: {
-      type: bitcoinDataTypes.hashType,
+      type: ColoredCoinsDataTypes.HASH,
       allowNull: false
     }
   },

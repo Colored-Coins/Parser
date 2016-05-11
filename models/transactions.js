@@ -1,6 +1,6 @@
 'use strict'
 
-var bitcoinDataTypes = require('./bitcoinDataTypes')
+var ColoredCoinsDataTypes = require('./coloredCoinsDataTypes')
 
 module.exports = function (sequelize, DataTypes) {
   var Transactions = sequelize.define('transactions', {
@@ -8,16 +8,16 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.INTEGER
     },
     blockhash: {
-      type: bitcoinDataTypes.hashType
+      type: ColoredCoinsDataTypes.HASH
     },
     blocktime: {
       type: DataTypes.BIGINT
     },
     index_in_block: {
-      type: DataTypes.INTEGER
+      type: 'SMALLINT'
     },
     txid: {
-      type: bitcoinDataTypes.hashType,
+      type: ColoredCoinsDataTypes.HASH,
       primaryKey: true
     },
     hex: {

@@ -1,6 +1,6 @@
 'use strict'
 
-var bitcoinDataTypes = require('./bitcoinDataTypes')
+var ColoredCoinsDataTypes = require('./coloredCoinsDataTypes')
 
 module.exports = function (sequelize, DataTypes) {
   var Blocks = sequelize.define('blocks', {
@@ -9,14 +9,14 @@ module.exports = function (sequelize, DataTypes) {
       primaryKey: true
     },
     hash: {
-      type: bitcoinDataTypes.hashType,
+      type: ColoredCoinsDataTypes.HASH,
       unique: true
     },
     previousblockhash: {
-      type: bitcoinDataTypes.hashType
+      type: ColoredCoinsDataTypes.HASH
     },
     nextblockhash: {
-      type: bitcoinDataTypes.hashType
+      type: ColoredCoinsDataTypes.HASH
     },
     size: {
       type: DataTypes.INTEGER
@@ -55,7 +55,7 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.BIGINT
     },
     txlength: {
-      type: DataTypes.INTEGER
+      type: 'SMALLINT'
     },
     txsinserted: {
       type: DataTypes.BOOLEAN,

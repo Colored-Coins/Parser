@@ -1,15 +1,15 @@
 'use strict'
 
-var bitcoinDataTypes = require('./bitcoinDataTypes')
+var ColoredCoinsDataTypes = require('./coloredCoinsDataTypes')
 
 module.exports = function (sequelize, DataTypes) {
   var AssetsAddresses = sequelize.define('assetsaddresses', {
     assetId: {
-      type: bitcoinDataTypes.assetIdType,
+      type: ColoredCoinsDataTypes.ASSETID,
       primaryKey: true
     },
     address: {
-      type: bitcoinDataTypes.addressType,
+      type: ColoredCoinsDataTypes.ADDRESS,
       primaryKey: true
     }
   },
