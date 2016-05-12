@@ -481,9 +481,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
     if (vout.scriptPubKey.hex.length > 2000) {
       vout.scriptPubKey.hex = null
       vout.scriptPubKey.asm = 'TOBIG'
-    }
-    if (vout.scriptPubKey && vout.scriptPubKey.type === 'nulldata') {
-
+    } else if (vout.scriptPubKey && vout.scriptPubKey.type === 'nulldata') {
       var hex = get_opreturn_data(vout.scriptPubKey.hex) // remove op_return (0x6a) and data length?
       if (check_version(hex)) {
         try {
