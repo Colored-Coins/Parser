@@ -243,7 +243,9 @@ Scanner.prototype.get_next_block_to_fix = function (limit, callback) {
     attributes: ['height', 'hash'],
     limit: limit,
     order: [['height', 'ASC']],
-    raw: true
+    raw: true,
+    logging: console.log,
+    benchmark: true
   }).then(function (blocks) { 
     console.log('get_next_block_to_fix - found ' + blocks.length + ' blocks')
     callback(null, blocks) 
@@ -574,6 +576,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
 
     var close_blocks = function (err, empty) {
       console.log('fix_blocks - close_blocks: err = ', err, ', empty = ', empty)
+      console.timeEnd('fix_transactions')
       if (err) return callback(err)
       emits.forEach(function (emit) {
         self.emit(emit[0], emit[1])
@@ -595,7 +598,9 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       self.Blocks.update(
         update,
         {
-          where: conditions
+          where: conditions,
+          logging: console.log,
+          benchmark: true
         }
       ).then(function (res) {
         console.log('fix_blocks - close_blocks - success')
@@ -616,6 +621,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       if (transactions_datas.length === 1) {
         console.log('Fixing ' + transactions_datas[0].txid)
       }
+      console.time('fix_transactions')
       async.each(transactions_datas, function (transaction_data, cb) {
         var sql_query = []
         self.fix_transaction(transaction_data, sql_query, function (err, all_fixed) {
@@ -976,7 +982,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
   raw_transaction_data.vin.forEach(function (vin) {
     if (vin.coinbase) {
       coinbase = true
-    } else if (!vin.fixed) {
+    } else {
       conditions.push({
         txid: vin.txid,
         $or: [
@@ -1026,6 +1032,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
         return result
       }, [])
       .value()
+    console.log('inputs_transactions = ', JSON.stringify(inputs_transactions))
     end(inputs_transactions)
   })
   .catch(callback)
