@@ -985,6 +985,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
 
   var find_vin_transactions_query = '' +
     'SELECT\n' +
+    '  txid,\n' +
     '  to_json(array(\n' +
     '    SELECT\n' +
     '      vout\n' +
@@ -992,7 +993,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     '      (SELECT\n' +
     '        id,\n' +
     '        n,\n' +
-    '        txid,\n' +
     '        value\n' +
     '      FROM\n' +
     '        outputs\n' +
