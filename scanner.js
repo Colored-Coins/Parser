@@ -73,7 +73,7 @@ util.inherits(Scanner, events.EventEmitter)
 Scanner.prototype.scan_blocks = function (err) {
   var self = this
   if (err) {
-    console.error('scan_blocks: err = ', JSON.stringify(err))
+    console.error('scan_blocks: err = ', err)
     return self.scan_blocks()
   }
   var job
@@ -621,40 +621,36 @@ Scanner.prototype.fix_blocks = function (err, callback) {
         console.log('Fixing ' + transactions_datas[0].txid)
       }
       console.time('fix_transactions')
-      var sql_query = []
-      var close_transactions_query = []
       async.each(transactions_datas, function (transaction_data, cb) {
+        var sql_query = []
         self.fix_transaction(transaction_data, sql_query, function (err, all_fixed) {
           if (err) return cb(err)
-          if (!all_fixed) return cb()
-          if (!transaction_data.colored) {
-            emits.push(['newtransaction', transaction_data])
-          }
-          close_transactions_query.push(squel.update()
-            .table('transactions')
-            .set('iosparsed', all_fixed)
-            .set('fee', transaction_data.fee || 0)
-            .set('totalsent', transaction_data.totalsent || 0)
-            .where('txid = ?', transaction_data.txid)
-            .toString())
-          cb()
+          if (!sql_query.length) return cb()
+          sql_query = sql_query.join(';\n')
+          self.sequelize.query(sql_query)
+            .then(function () {
+              if (!all_fixed) return cb()
+              var close_transaction_query = squel.update()
+                .table('transactions')
+                .set('iosparsed', all_fixed)
+                .set('fee', transaction_data.fee || 0)
+                .set('totalsent', transaction_data.totalsent || 0)
+                .where('txid = ?', transaction_data.txid)
+                .toString() + ';'
+              if (!transaction_data.colored && all_fixed) {
+                emits.push(['newtransaction', transaction_data])
+              }
+              self.sequelize.query(close_transaction_query)
+                .then(function () { cb() })
+                .catch(function (err) {
+                  console.log('get_need_to_fix_transactions_by_blocks() - err = ', err)
+                  cb(err)
+                })
+            })
         })
       }, function (err) {
-        sql_query = sql_query.join(';\n')
-        console.time('fix bulk')
-        self.sequelize.query(sql_query)
-          .then(function () {
-            console.timeEnd('fix bulk')
-            console.time('fix close_transactions_query bulk')
-            close_transactions_query = close_transactions_query.join(';\n')
-            self.sequelize.query(close_transactions_query)
-              .then(function () { 
-                console.timeEnd('fix close_transactions_query bulk')
-                console.timeEnd('fix_transactions')
-                close_blocks() 
-              })
-              .catch(function (e) { callback(e) })
-          })
+        console.timeEnd('fix_transactions')
+        close_blocks(err)
       })
     })
   })
@@ -823,7 +819,7 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
 }
 
 Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_block, last_block, callback) {
-  console.log('get_need_to_cc_parse_transactions_by_blocks for blocks ' + first_block + '-' + last_block)
+  console.warn('get_need_to_cc_parse_transactions_by_blocks for blocks ' + first_block + '-' + last_block)
   var query = [
     'SELECT',
     '  transactions.txid,',
