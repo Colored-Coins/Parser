@@ -641,17 +641,17 @@ Scanner.prototype.fix_blocks = function (err, callback) {
                 emits.push(['newtransaction', transaction_data])
               }
               self.sequelize.query(close_transaction_query)
-                .then(function () {
-                  console.timeEnd('fix_transactions')
-                  cb()
-                })
+                .then(function () { cb() })
                 .catch(function (err) {
                   console.log('get_need_to_fix_transactions_by_blocks() - err = ', err)
                   cb(err)
                 })
             })
         })
-      }, close_blocks)
+      }, function (err) {
+        console.timeEnd('fix_transactions')
+        close_blocks(err)
+      })
     })
   })
 }
