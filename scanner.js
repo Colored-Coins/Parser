@@ -593,7 +593,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
         ccparsed: false
       }
       var conditions = {
-        height: {$in: blocks_heights}
+        height: {$between: [first_block, last_block]}
       }
       self.Blocks.update(
         update,
@@ -892,7 +892,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     .order('tries')
     .limit(200)
     .toString() + ';'
-  this.sequelize.query(query, {type: this.sequelize.QueryTypes.SELECT, benchmark: true})
+  this.sequelize.query(query, {type: this.sequelize.QueryTypes.SELECT, logging: console.log, benchmark: true})
     .then(function (transactions) {
       // if (transactions.length) {
       //   console.warn('get_need_to_fix_transactions_by_blocks - transactions = ', JSON.stringify(transactions))
@@ -1032,7 +1032,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
         return result
       }, [])
       .value()
-    console.log('inputs_transactions = ', JSON.stringify(inputs_transactions))
     end(inputs_transactions)
   })
   .catch(callback)
