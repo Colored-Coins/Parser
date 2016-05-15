@@ -627,26 +627,28 @@ Scanner.prototype.fix_blocks = function (err, callback) {
           if (err) return cb(err)
           if (!sql_query.length) return cb()
           sql_query = sql_query.join(';\n')
-          self.sequelize.query(sql_query)
-            .then(function () {
-              if (!all_fixed) return cb()
-              var close_transaction_query = squel.update()
-                .table('transactions')
-                .set('iosparsed', all_fixed)
-                .set('fee', transaction_data.fee || 0)
-                .set('totalsent', transaction_data.totalsent || 0)
-                .where('txid = ?', transaction_data.txid)
-                .toString() + ';'
-              if (!transaction_data.colored && all_fixed) {
-                emits.push(['newtransaction', transaction_data])
-              }
-              self.sequelize.query(close_transaction_query)
-                .then(function () { cb() })
-                .catch(function (err) {
-                  console.log('get_need_to_fix_transactions_by_blocks() - err = ', err)
-                  cb(err)
-                })
-            })
+          async.each(sql_query, function (single_sql_query, cb) {
+            self.sequelize.query(single_sql_query)
+              .then(function () {
+                if (!all_fixed) return cb()
+                var close_transaction_query = squel.update()
+                  .table('transactions')
+                  .set('iosparsed', all_fixed)
+                  .set('fee', transaction_data.fee || 0)
+                  .set('totalsent', transaction_data.totalsent || 0)
+                  .where('txid = ?', transaction_data.txid)
+                  .toString() + ';'
+                if (!transaction_data.colored && all_fixed) {
+                  emits.push(['newtransaction', transaction_data])
+                }
+                self.sequelize.query(close_transaction_query)
+                  .then(function () { cb() })
+                  .catch(function (err) {
+                    console.log('get_need_to_fix_transactions_by_blocks() - err = ', err)
+                    cb(err)
+                  })
+              })
+          }, cb)
         })
       }, function (err) {
         console.timeEnd('fix_transactions')
