@@ -874,46 +874,31 @@ Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_
 }
 
 Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block, last_block, callback) {
-  var query = squel.select({autoQuoteFieldNames: false})
-    .field('txid')
-    .field('blockheight')
-    .field('tries')
-    .field('colored')
-    .field('to_json(array(' + squel.select({autoQuoteFieldNames: false})
-      .field('vin')
-      .from(squel.select({autoQuoteFieldNames: false})
-        .field('inputs.*')
-        .from('inputs')
-        .where('inputs.input_txid = transactions.txid')
-        .order('input_index'), 'vin')
-        .toString() + '))', 'vin')
-    .field('to_json(array(' + squel.select({autoQuoteFieldNames: false})
-      .field('vout')
-      .from(squel.select({autoQuoteFieldNames: false})
-        .field('outputs.*')
-        .from('outputs')
-        .where('outputs.txid = transactions.txid')
-        .order('n'), 'vout')
-        .toString() + '))', 'vout')
-    .from('transactions')
-    .where('iosparsed = ?', false)
-    .where('blockheight BETWEEN ? AND ?', first_block, last_block)
-    .order('blockheight')
-    .order('tries')
-    .limit(200)
-    .toString() + ';'
-  this.sequelize.query(query, {type: this.sequelize.QueryTypes.SELECT, logging: console.log, benchmark: true})
-    .then(function (transactions) {
-      // if (transactions.length) {
-      //   console.warn('get_need_to_fix_transactions_by_blocks - transactions = ', JSON.stringify(transactions))
-      // }
-      console.log('get_need_to_fix_transactions_by_blocks #1 - transactions.length = ', transactions.length)
-      callback(null, transactions)
-    })
-    .catch(function (e) {
-      console.log('get_need_to_fix_transactions_by_blocks - e = ', e)
-      callback(e)
-    })
+  var conditions = {
+    iosparsed: false,
+    blockheight: {$between: [first_block, last_block]}
+  }
+  console.time('get_need_to_fix_transactions_by_blocks')
+  this.Transactions.findAll({
+    where: conditions,
+    limit: 200,
+    attributes: ['txid', 'blockheight', 'tries', 'colored'],
+    include: [
+      { model: this.Inputs, separate: true, as: 'vin', attributes: {exclude: ['scriptSig']}, order: [['input_index', 'ASC']] },
+      { model: this.Outputs, separate: true, as: 'vout', attributes: {exclude: ['scriptPubKey']}, order: [['n', 'ASC']] }
+    ],
+    order: [
+      ['blockheight', 'ASC'],
+      ['tries', 'ASC']
+    ]
+  }).then(function (transactions) {
+    console.timeEnd('get_need_to_fix_transactions_by_blocks')
+    console.log('get_need_to_fix_transactions_by_blocks #1 - transactions.length = ', transactions.length)
+    callback(null, transactions)
+  }).catch(function (e) {
+    console.log('get_need_to_fix_transactions_by_blocks - e = ', e)
+    callback(e)
+  })
 }
 
 Scanner.prototype.fix_transaction = function (raw_transaction_data, sql_query, callback) {
@@ -938,8 +923,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
   var self = this
   var coinbase = false
   var inputsToFix = {}
-  var conditions = []
-  var outputsConditions = []
 
   if (!raw_transaction_data.vin) {
     return callback('transaction ' + raw_transaction_data.txid + ' does not have vin.')
@@ -980,34 +963,19 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
       raw_transaction_data.tries = raw_transaction_data.tries || 0
       raw_transaction_data.tries++
       if (raw_transaction_data.tries > 1000) {
-        // console.warn('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(inputsToFix), ') for over than 1000 tries.')
+        console.warn('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(inputsToFix), ') for over than 1000 tries.')
       }
     }
     callback(null, all_fixed)
   }
 
+  var txids = {}
   raw_transaction_data.vin.forEach(function (vin) {
     if (vin.coinbase) {
       coinbase = true
     } else {
-      conditions.push({
-        txid: vin.txid,
-        $or: [
-          {
-            colored: false
-          },
-          {
-            iosparsed: true,
-            colored: true,
-            ccparsed: true
-          }
-        ]
-      })
-      outputsConditions.push({
-        txid: vin.txid,
-        n: vin.vout
-      })
       inputsToFix[vin.txid + ':' + vin.vout] = vin
+      txids[vin.txid] = true
     }
   })
 
@@ -1015,33 +983,29 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     return end([])
   }
 
-  self.Transactions.findAll({
-    where: {$or: conditions},
-    attributes: [],
-    include: [
-      // we need only the outputs which correspond to the given transaction inputs
-      { model: self.Outputs, as: 'vout', attributes: ['id', 'txid', 'n', 'value'], on:
-        {
-          txid: {$col: 'transactions.txid'},
-          $or: outputsConditions
-        }
-      }
-    ],
-    raw: true,
-    nest: true
-  })
-  .then(function (inputs_transactions) {
-    // console.log('fix_vin ' + raw_transaction_data.txid + ' - inputs_transactions.length = ', inputs_transactions.length)
-    inputs_transactions = _(inputs_transactions)
-      .groupBy('vout.txid')
-      .transform(function (result, txs, txid) {
-        result.push({txid: txid, vout: _.map(txs, 'vout')})
-        return result
-      }, [])
-      .value()
-    end(inputs_transactions)
-  })
-  .catch(callback)
+  var find_vin_transactions_query = '' +
+    'SELECT\n' +
+    '  to_json(array(\n' +
+    '    SELECT\n' +
+    '      vout\n' +
+    '    FROM\n' +
+    '      (SELECT\n' +
+    '        id,\n' +
+    '        n,\n' +
+    '        txid,\n' +
+    '        value\n' +
+    '      FROM\n' +
+    '        outputs\n' +
+    '      WHERE\n' +
+    '        outputs.txid = transactions.txid\n' +
+    '      ORDER BY n) AS vout)) AS vout\n' +
+    'FROM transactions\n' +
+    'WHERE transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ';'
+  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
+    .then(function (vin_transactions) {
+      end(vin_transactions)
+    })
+    .catch(callback)
 }
 
 Scanner.prototype.fix_input = function (input, sql_query) {
@@ -1674,6 +1638,12 @@ var to_sql_fields = function (obj, options) {
     }
   })
   return ans
+}
+
+var to_sql_values = function (values) {
+  return '(' + values.map(function (value) {
+    return '\'' + value + '\'' 
+  }).join(', ') + ')'
 }
 
 var to_sql_update_string = function (obj) {
