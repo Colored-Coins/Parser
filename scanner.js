@@ -626,7 +626,6 @@ Scanner.prototype.fix_blocks = function (err, callback) {
         self.fix_transaction(transaction_data, sql_query, function (err, all_fixed) {
           if (err) return cb(err)
           if (!sql_query.length) return cb()
-          sql_query = sql_query.join(';\n')
           async.each(sql_query, function (single_sql_query, cb) {
             self.sequelize.query(single_sql_query)
               .then(function () {
