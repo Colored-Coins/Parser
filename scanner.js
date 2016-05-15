@@ -626,28 +626,33 @@ Scanner.prototype.fix_blocks = function (err, callback) {
         self.fix_transaction(transaction_data, sql_query, function (err, all_fixed) {
           if (err) return cb(err)
           if (!sql_query.length) return cb()
-          async.each(sql_query, function (single_sql_query, cb) {
-            self.sequelize.query(single_sql_query)
-              .then(function () {
-                if (!all_fixed) return cb()
-                var close_transaction_query = squel.update()
-                  .table('transactions')
-                  .set('iosparsed', all_fixed)
-                  .set('fee', transaction_data.fee || 0)
-                  .set('totalsent', transaction_data.totalsent || 0)
-                  .where('txid = ?', transaction_data.txid)
-                  .toString() + ';'
-                if (!transaction_data.colored && all_fixed) {
-                  emits.push(['newtransaction', transaction_data])
-                }
-                self.sequelize.query(close_transaction_query)
-                  .then(function () { cb() })
-                  .catch(function (err) {
-                    console.log('get_need_to_fix_transactions_by_blocks() - err = ', err)
-                    cb(err)
-                  })
-              })
-          }, cb)
+          sql_query = sql_query.join(';\n')
+          console.time('fix bulk')
+          self.sequelize.query(sql_query)
+            .then(function () {
+              console.timeEnd('fix bulk')
+              if (!all_fixed) return cb()
+              var close_transaction_query = squel.update()
+                .table('transactions')
+                .set('iosparsed', all_fixed)
+                .set('fee', transaction_data.fee || 0)
+                .set('totalsent', transaction_data.totalsent || 0)
+                .where('txid = ?', transaction_data.txid)
+                .toString() + ';'
+              if (!transaction_data.colored && all_fixed) {
+                emits.push(['newtransaction', transaction_data])
+              }
+              console.time('fix close_transaction_query bulk')
+              self.sequelize.query(close_transaction_query)
+                .then(function () {
+                  console.timeEnd('fix close_transaction_query bulk')
+                  cb() 
+                })
+                .catch(function (err) {
+                  console.log('get_need_to_fix_transactions_by_blocks() - err = ', err)
+                  cb(err)
+                })
+            })
         })
       }, function (err) {
         console.timeEnd('fix_transactions')
@@ -1002,8 +1007,10 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     '      ORDER BY n) AS vout)) AS vout\n' +
     'FROM transactions\n' +
     'WHERE transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ';'
+  console.time('find_vin_transactions_query')
   self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
     .then(function (vin_transactions) {
+      console.timeEnd('find_vin_transactions_query')
       end(vin_transactions)
     })
     .catch(callback)
