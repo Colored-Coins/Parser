@@ -626,20 +626,28 @@ Scanner.prototype.fix_blocks = function (err, callback) {
         var sql_query = []
         self.fix_transaction(transaction_data, sql_query, function (err, all_fixed) {
           if (err) return cb(err)
+          if (!sql_query.length) return cb()
           sql_query = sql_query.join(';\n')
-          self.sequelize.transaction(function (sql_transaction) {
-            return self.sequelize.query(sql_query, {transaction: sql_transaction})
-              .then(function () {
-                if (!transaction_data.colored && all_fixed) {
-                  emits.push(['newtransaction', transaction_data])
-                }
-                cb()
-              })
-              .catch(function (err) {
-                console.log('get_need_to_fix_transactions_by_blocks() - err = ', err)
-                cb(err)
-              })
-          })
+          self.sequelize.query(sql_query)
+            .then(function () {
+              if (!all_fixed) return cb()
+              var close_transaction_query = squel.update()
+                .table('transactions')
+                .set('iosparsed', all_fixed)
+                .set('fee', transaction_data.fee || 0)
+                .set('totalsent', transaction_data.totalsent || 0)
+                .where('txid = ?', transaction_data.txid)
+                .toString() + ';'
+              if (!transaction_data.colored && all_fixed) {
+                emits.push(['newtransaction', transaction_data])
+              }
+              self.sequelize.query(close_transaction_query)
+                .then(function () { cb() })
+                .catch(function (err) {
+                  console.log('get_need_to_fix_transactions_by_blocks() - err = ', err)
+                  cb(err)
+                })
+            })
         })
       }, close_blocks)
     })
@@ -911,10 +919,7 @@ Scanner.prototype.fix_transaction = function (raw_transaction_data, sql_query, c
     if (err) return callback(err)
     sql_query.push(squel.update()
       .table('transactions')
-      .set('iosparsed', all_fixed)
       .set('tries', raw_transaction_data.tries || 0)
-      .set('fee', raw_transaction_data.fee || 0)
-      .set('totalsent', raw_transaction_data.totalsent || 0)
       .where('txid = ?', raw_transaction_data.txid)
       .toString())
     callback(null, all_fixed)
