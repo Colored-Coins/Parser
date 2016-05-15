@@ -576,7 +576,6 @@ Scanner.prototype.fix_blocks = function (err, callback) {
 
     var close_blocks = function (err, empty) {
       console.log('fix_blocks - close_blocks: err = ', err, ', empty = ', empty)
-      console.timeEnd('fix_transactions')
       if (err) return callback(err)
       emits.forEach(function (emit) {
         self.emit(emit[0], emit[1])
@@ -642,7 +641,10 @@ Scanner.prototype.fix_blocks = function (err, callback) {
                 emits.push(['newtransaction', transaction_data])
               }
               self.sequelize.query(close_transaction_query)
-                .then(function () { cb() })
+                .then(function () {
+                  console.timeEnd('fix_transactions')
+                  cb()
+                })
                 .catch(function (err) {
                   console.log('get_need_to_fix_transactions_by_blocks() - err = ', err)
                   cb(err)
