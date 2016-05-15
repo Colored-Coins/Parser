@@ -627,10 +627,10 @@ Scanner.prototype.fix_blocks = function (err, callback) {
           if (err) return cb(err)
           if (!sql_query.length) return cb()
           sql_query = sql_query.join(';\n')
-          console.time('fix bulk')
+          console.time('fix bulk ' + transaction_data.txid)
           self.sequelize.query(sql_query)
             .then(function () {
-              console.timeEnd('fix bulk')
+              console.timeEnd('fix bulk ' + transaction_data.txid)
               if (!all_fixed) return cb()
               var close_transaction_query = squel.update()
                 .table('transactions')
@@ -642,10 +642,10 @@ Scanner.prototype.fix_blocks = function (err, callback) {
               if (!transaction_data.colored && all_fixed) {
                 emits.push(['newtransaction', transaction_data])
               }
-              console.time('fix close_transaction_query bulk')
+              console.time('fix close_transaction_query bulk ' + transaction_data.txid)
               self.sequelize.query(close_transaction_query)
                 .then(function () {
-                  console.timeEnd('fix close_transaction_query bulk')
+                  console.timeEnd('fix close_transaction_query bulk ' + transaction_data.txid)
                   cb() 
                 })
                 .catch(function (err) {
@@ -1007,10 +1007,10 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     '      ORDER BY n) AS vout)) AS vout\n' +
     'FROM transactions\n' +
     'WHERE transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ';'
-  console.time('find_vin_transactions_query')
+  console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
   self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
     .then(function (vin_transactions) {
-      console.timeEnd('find_vin_transactions_query')
+      console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
       end(vin_transactions)
     })
     .catch(callback)
