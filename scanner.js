@@ -1620,13 +1620,14 @@ var execute_bulks_parallel = function (self, bulks, callback) {
 
 var execute_bulk = function (self, bulk, callback) {
   // console.log('execute_bulk - bulk = ', JSON.stringify(bulk))
+  if (!bulk.updates || !bulk.updates.length) return callback()
   var sql_query = to_sql_multi_condition_update(bulk)
   self.sequelize.query(sql_query)
     .then(function () { return callback() })
     .catch(callback)
 }
 
-var to_sql_multi_condition_update = function (bulk, callback) {
+var to_sql_multi_condition_update = function (bulk) {
   // console.log('to_sql_multi_condition_update - bulk = ', JSON.stringify(bulk))
   var table_name = bulk.table_name
   var updates = bulk.updates
