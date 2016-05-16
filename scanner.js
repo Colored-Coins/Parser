@@ -641,6 +641,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
         })
       }, 
       function (err) {
+        if (err) return callback(err)
         console.timeEnd('fix_transactions - each')
         console.time('fix_transactions - fix bulk')
         inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
@@ -654,7 +655,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
           execute_bulk(self, close_transactions_bulk, function (err) {
             console.timeEnd('fix_transactions - fix close_transactions_bulk')
             console.timeEnd('fix_transactions')
-            if (err) callback(err)
+            if (err) return callback(err)
             close_blocks()
           })
         })
@@ -976,12 +977,14 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
   }
 
   var txids = {}
+  var txids_indexes = []
   raw_transaction_data.vin.forEach(function (vin) {
     if (vin.coinbase) {
       coinbase = true
     } else {
       inputsToFix[vin.txid + ':' + vin.vout] = vin
       txids[vin.txid] = true
+      txids_indexes.push({txid: vin.txid, n: vin.vout})
     }
   })
 
@@ -1003,10 +1006,11 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
     '      FROM\n' +
     '        outputs\n' +
     '      WHERE\n' +
-    '        outputs.txid = transactions.txid\n' +
+    '        outputs.txid = transactions.txid AND ' + to_sql_conditions(txids_indexes) + '\n' +
     '      ORDER BY n) AS vout)) AS vout\n' +
     'FROM transactions\n' +
-    'WHERE transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ';'
+    'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) ' +
+    'AND (transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ');'
   // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
   self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
     .then(function (vin_transactions) {
@@ -1627,7 +1631,8 @@ var to_sql_multi_condition_update = function (bulk, callback) {
   var table_name = bulk.table_name
   var updates = bulk.updates
   var attributes_to_set = {}
-  var conditions = updates.map(function (update) { return to_sql_condition(update.where) })
+  var conditions = updates.map(function (update) { return update.where })
+
   // console.log('to_sql_multi_condition_update - conditions = ', JSON.stringify(conditions))
   updates.forEach(function (update) {
     Object.keys(update.set).forEach(function (attribute) {
@@ -1667,7 +1672,7 @@ var to_sql_condition = function (where_obj) {
 }
 
 var to_sql_conditions = function (conditions) {
-  return '(' + conditions.join(' OR ') + ')'
+  return '(' + conditions.map(to_sql_condition).join(' OR ') + ')'
 }
 
 Scanner.prototype.transmit = function (txHex, callback) {
