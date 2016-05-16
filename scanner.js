@@ -617,127 +617,49 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       if (!transactions_datas.length) {
         return close_blocks(null, true)
       }
-
-      var inputs_txids = {}
-      var inputs_txids_indexes = []
-      var inputs_to_fix = {}
-      var transactions_to_fix = _.filter(transactions_datas, function (transaction_data) { return !transaction_data.vin[0].coinbase })
+      if (transactions_datas.length === 1) {
+        console.log('Fixing ' + transactions_datas[0].txid)
+      }
+      var inputs_bulk = []
+      var outputs_bulk = []
+      var transactions_bulk = []
       var close_transactions_bulk = []
-      transactions_to_fix.forEach(function (transaction_to_fix) {
-        transaction_to_fix.vin.forEach(function (input) {
-          input.blockheight = transaction_to_fix.blockheight
-          inputs_txids_indexes.push({txid: input.txid, n: input.vout})
-          inputs_txids[input.txid] = true
-          inputs_to_fix[input.txid + ':' + input.vout] = input
+      console.time('fix_transactions')
+      console.time('fix_transactions - each')
+      async.each(transactions_datas, function (transaction_data, cb) {
+        self.fix_transaction(transaction_data, inputs_bulk, outputs_bulk, transactions_bulk, function (err, all_fixed) {
+          if (err) return cb(err)
+          if (!all_fixed) return cb()
+          close_transactions_bulk.push({
+            set: {iosparsed: all_fixed, fee: transaction_data.fee || 0, totalsent: transaction_data.totalsent || 0},
+            where: {txid: transaction_data.txid}
+          })
+          if (!transaction_data.colored && all_fixed) {
+            emits.push(['newtransaction', transaction_data])
+          }
+          cb()
+        })
+      }, 
+      function (err) {
+        if (err) return callback(err)
+        console.timeEnd('fix_transactions - each')
+        console.time('fix_transactions - fix bulk')
+        inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
+        outputs_bulk = {table_name: 'outputs', updates: outputs_bulk}
+        transactions_bulk = {table_name: 'transactions', updates: transactions_bulk}
+        close_transactions_bulk = {table_name: 'transactions', updates: close_transactions_bulk}
+        execute_bulks_parallel(self, [inputs_bulk, outputs_bulk, transactions_bulk], function (err) {
+          console.timeEnd('fix_transactions - fix bulk')
+          if (err) return callback(err)
+          console.time('fix_transactions - fix close_transactions_bulk')
+          execute_bulk(self, close_transactions_bulk, function (err) {
+            console.timeEnd('fix_transactions - fix close_transactions_bulk')
+            console.timeEnd('fix_transactions')
+            if (err) return callback(err)
+            close_blocks()
+          })
         })
       })
-
-      var find_vin_transactions_query = '' +
-        'SELECT\n' +
-        '  txid,\n' +
-        '  to_json(array(\n' +
-        '    SELECT\n' +
-        '      vout\n' +
-        '    FROM\n' +
-        '      (SELECT\n' +
-        '        id,\n' +
-        '        n,\n' +
-        '        value\n' +
-        '      FROM\n' +
-        '        outputs\n' +
-        '      WHERE\n' +
-        '        outputs.txid = transactions.txid AND ' + to_sql_conditions(inputs_txids_indexes) + '\n' +
-        '      ORDER BY n) AS vout)) AS vout\n' +
-        'FROM transactions\n' +
-        'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) ' +
-        'AND (transactions.txid IN ' + to_sql_values(Object.keys(inputs_txids)) + ');'
-
-      async.waterfall([
-        function (cb) {
-          console.time('fix_transactions - query')
-          // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
-          self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
-          .then(function (inputs_transactions) { cb(null, inputs_transactions) })
-          .catch(cb)  
-        },
-        function (inputs_transactions, cb) {
-          console.timeEnd('fix_transactions - query')
-          console.time('fix_transactions - update inputs, outputs, transactions')
-          var inputs_bulk = []
-          var outputs_bulk = []
-          var transactions_bulk = []
-          var inputs_to_fix_now = {}
-          inputs_transactions.forEach(function (input_transaction) {
-            input_transaction.vout.forEach(function (vout) {
-              var input
-              if (input_transaction.txid + ':' + vout.n in inputs_to_fix) {
-                input = inputs_to_fix[input_transaction.txid + ':' + vout.n]
-                input.value = vout.value
-                input.output_id = vout.id
-                inputs_to_fix_now[input_transaction.txid + ':' + vout.n] = input
-              }
-            })
-          })
-
-          Object.keys(inputs_to_fix_now).forEach(function (key) {
-            var input = inputs_to_fix_now[key]
-            self.fix_input(input, inputs_bulk)
-            self.fix_used_output(input.txid, input.vout, input.input_txid, input.blockheight, outputs_bulk)
-          })
-
-          transactions_to_fix.forEach(function (transaction_to_fix) {
-            var inputs_to_fix_now_count = 0
-            transaction_to_fix.vin.forEach(function (input) {
-              inputs_to_fix_now_count += (inputs_to_fix_now[input.txid + ':' + input.vout] ? 1 : 0)
-            })
-            var all_fixed = (inputs_to_fix_now_count === transaction_to_fix.vin.length)
-            if (all_fixed) {
-              calc_fee(transaction_to_fix)
-              if (transaction_to_fix.fee < 0) {
-                console.log('calc_fee < 0 !!!')
-                console.log('calc_fee: ' + transaction_to_fix.txid + ', transaction_to_fix.fee = ', transaction_to_fix.fee)
-                console.log('calc_fee: ' + transaction_to_fix.txid + ', transaction_to_fix.totalsent = ', transaction_to_fix.totalsent)
-                console.log('calc_fee, ' + transaction_to_fix.txid + ', transaction_to_fix = ', transaction_to_fix)
-              }
-              close_transactions_bulk.push({
-                set: {iosparsed: all_fixed, fee: transaction_to_fix.fee || 0, totalsent: transaction_to_fix.totalsent || 0},
-                where: {txid: transaction_to_fix.txid}
-              })
-              if (!transaction_to_fix.colored && all_fixed) {
-                emits.push(['newtransaction', transaction_to_fix])
-              }
-            } else {
-              transaction_to_fix.tries = transaction_to_fix.tries || 0
-              transaction_to_fix.tries++
-              if (transaction_to_fix.tries > 1000) {
-                console.warn('transaction', transaction_to_fix.txid, 'has un parsed inputs (', transaction_to_fix.vin, ') for over than 1000 tries.')
-              }
-              transactions_bulk.push({
-                set: {tries: raw_transaction_data.tries || 0},
-                where: {txid: raw_transaction_data.txid},
-              })
-            }
-          })
-
-          inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
-          outputs_bulk = {table_name: 'outputs', updates: outputs_bulk}
-          transactions_bulk = {table_name: 'transactions', updates: transactions_bulk}
-          close_transactions_bulk = {table_name: 'transactions', updates: close_transactions_bulk}
-          // console.log('inputs_bulk = ', JSON.stringify(inputs_bulk))
-          // console.log('outputs_bulk = ', JSON.stringify(outputs_bulk))
-          // console.log('transactions_bulk = ', JSON.stringify(transactions_bulk))
-          // console.log('close_transactions_bulk = ', JSON.stringify(close_transactions_bulk))
-          execute_bulks_parallel(self, [inputs_bulk, outputs_bulk, transactions_bulk], cb)
-        },
-        function (cb) {
-          console.timeEnd('fix_transactions - update inputs, outputs, transactions')
-          console.time('fix_transactions - close_transactions_bulk')
-          execute_bulk(self, close_transactions_bulk, function (err) {
-            console.timeEnd('fix_transactions - close_transactions_bulk')
-            cb(err)
-          })
-        }
-      ], close_blocks)
     })
   })
 }
@@ -1698,14 +1620,13 @@ var execute_bulks_parallel = function (self, bulks, callback) {
 
 var execute_bulk = function (self, bulk, callback) {
   // console.log('execute_bulk - bulk = ', JSON.stringify(bulk))
-  if (!bulk.updates || !bulk.updates.length) return callback()
   var sql_query = to_sql_multi_condition_update(bulk)
   self.sequelize.query(sql_query)
     .then(function () { return callback() })
     .catch(callback)
 }
 
-var to_sql_multi_condition_update = function (bulk) {
+var to_sql_multi_condition_update = function (bulk, callback) {
   // console.log('to_sql_multi_condition_update - bulk = ', JSON.stringify(bulk))
   var table_name = bulk.table_name
   var updates = bulk.updates
