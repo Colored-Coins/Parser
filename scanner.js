@@ -73,7 +73,7 @@ util.inherits(Scanner, events.EventEmitter)
 Scanner.prototype.scan_blocks = function (err) {
   var self = this
   if (err) {
-    console.error('scan_blocks: err = ', err)
+    console.error('scan_blocks: err = ', JSON.stringify(err))
     return self.scan_blocks()
   }
   var job
@@ -555,7 +555,7 @@ Scanner.prototype.scan_mempol_only = function (err) {
 Scanner.prototype.fix_blocks = function (err, callback) {
   var self = this
   if (err) {
-    console.error('fix_blocks: err = ', err)
+    console.error('fix_blocks: err = ', JSON.stringify(err))
     return self.fix_blocks(null, callback)
   }
   var emits = []
@@ -620,43 +620,44 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       if (transactions_datas.length === 1) {
         console.log('Fixing ' + transactions_datas[0].txid)
       }
+      var inputs_bulk = []
+      var outputs_bulk = []
+      var transactions_bulk = []
+      var close_transactions_bulk = []
       console.time('fix_transactions')
+      console.time('fix_transactions - each')
       async.each(transactions_datas, function (transaction_data, cb) {
-        var sql_query = []
-        self.fix_transaction(transaction_data, sql_query, function (err, all_fixed) {
+        self.fix_transaction(transaction_data, inputs_bulk, outputs_bulk, transactions_bulk, function (err, all_fixed) {
           if (err) return cb(err)
-          if (!sql_query.length) return cb()
-          sql_query = sql_query.join(';\n')
-          console.time('fix bulk ' + transaction_data.txid)
-          self.sequelize.query(sql_query)
-            .then(function () {
-              console.timeEnd('fix bulk ' + transaction_data.txid)
-              if (!all_fixed) return cb()
-              var close_transaction_query = squel.update()
-                .table('transactions')
-                .set('iosparsed', all_fixed)
-                .set('fee', transaction_data.fee || 0)
-                .set('totalsent', transaction_data.totalsent || 0)
-                .where('txid = ?', transaction_data.txid)
-                .toString() + ';'
-              if (!transaction_data.colored && all_fixed) {
-                emits.push(['newtransaction', transaction_data])
-              }
-              console.time('fix close_transaction_query bulk ' + transaction_data.txid)
-              self.sequelize.query(close_transaction_query)
-                .then(function () {
-                  console.timeEnd('fix close_transaction_query bulk ' + transaction_data.txid)
-                  cb() 
-                })
-                .catch(function (err) {
-                  console.log('get_need_to_fix_transactions_by_blocks() - err = ', err)
-                  cb(err)
-                })
-            })
+          if (!all_fixed) return cb()
+          close_transactions_bulk.push({
+            set: {iosparsed: all_fixed, fee: transaction_data.fee || 0, totalsent: transaction_data.totalsent || 0},
+            where: {txid: transaction_data.txid}
+          })
+          if (!transaction_data.colored && all_fixed) {
+            emits.push(['newtransaction', transaction_data])
+          }
+          cb()
         })
-      }, function (err) {
-        console.timeEnd('fix_transactions')
-        close_blocks(err)
+      }, 
+      function (err) {
+        console.timeEnd('fix_transactions - each')
+        console.time('fix_transactions - fix bulk')
+        inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
+        outputs_bulk = {table_name: 'outputs', updates: outputs_bulk}
+        transactions_bulk = {table_name: 'transactions', updates: transactions_bulk}
+        close_transactions_bulk = {table_name: 'transactions', updates: close_transactions_bulk}
+        execute_bulks_parallel(self, [inputs_bulk, outputs_bulk, transactions_bulk], function (err) {
+          console.timeEnd('fix_transactions - fix bulk')
+          if (err) return callback(err)
+          console.time('fix_transactions - fix close_transactions_bulk')
+          execute_bulk(self, close_transactions_bulk, function (err) {
+            console.timeEnd('fix_transactions - fix close_transactions_bulk')
+            console.timeEnd('fix_transactions')
+            if (err) callback(err)
+            close_blocks()
+          })
+        })
       })
     })
   })
@@ -825,7 +826,7 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
 }
 
 Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_block, last_block, callback) {
-  console.warn('get_need_to_cc_parse_transactions_by_blocks for blocks ' + first_block + '-' + last_block)
+  console.log('get_need_to_cc_parse_transactions_by_blocks for blocks ' + first_block + '-' + last_block)
   var query = [
     'SELECT',
     '  transactions.txid,',
@@ -907,19 +908,18 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
   })
 }
 
-Scanner.prototype.fix_transaction = function (raw_transaction_data, sql_query, callback) {
-  this.fix_vin(raw_transaction_data, raw_transaction_data.blockheight, sql_query, function (err, all_fixed) {
+Scanner.prototype.fix_transaction = function (raw_transaction_data, inputs_bulk, outputs_bulk, transactions_bulk, callback) {
+  this.fix_vin(raw_transaction_data, raw_transaction_data.blockheight, inputs_bulk, outputs_bulk, function (err, all_fixed) {
     if (err) return callback(err)
-    sql_query.push(squel.update()
-      .table('transactions')
-      .set('tries', raw_transaction_data.tries || 0)
-      .where('txid = ?', raw_transaction_data.txid)
-      .toString())
+    transactions_bulk.push({
+      set: {tries: raw_transaction_data.tries || 0},
+      where: {txid: raw_transaction_data.txid},
+    })
     callback(null, all_fixed)
   })
 }
 
-Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_query, callback) {
+Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_bulk, outputs_bulk, callback) {
   // fixing a transaction - we need to fulfill the condition where a transaction is iosparsed if and only if
   // all of its inputs are fixed. 
   // An input is fixed when it is assigned with the output_id of its associated output, and the output is marked as used.
@@ -949,8 +949,8 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     })
 
     inputsToFixNow.forEach(function (input) {
-      self.fix_input(input, sql_query)
-      self.fix_used_output(input.txid, input.vout, raw_transaction_data.txid, blockheight, sql_query)
+      self.fix_input(input, inputs_bulk)
+      self.fix_used_output(input.txid, input.vout, raw_transaction_data.txid, blockheight, outputs_bulk)
     })
 
     var all_fixed = (inputsToFixNow.length === Object.keys(inputsToFix).length)
@@ -1007,33 +1007,27 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, sql_que
     '      ORDER BY n) AS vout)) AS vout\n' +
     'FROM transactions\n' +
     'WHERE transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ';'
-  console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
+  // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
   self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
     .then(function (vin_transactions) {
-      console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
+      // console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
       end(vin_transactions)
     })
     .catch(callback)
 }
 
-Scanner.prototype.fix_input = function (input, sql_query) {
-  sql_query.push(squel.update()
-    .table('inputs')
-    .set('output_id', input.output_id)
-    .set('value', input.value)
-    .set('fixed', true)
-    .where('input_txid = ? AND input_index = ?', input.input_txid, input.input_index)
-    .toString())
+Scanner.prototype.fix_input = function (input, inputs_bulk) {
+  inputs_bulk.push({
+    set: {output_id: input.output_id, value: input.value, fixed: true},
+    where: {input_txid: input.input_txid, input_index: input.input_index}
+  })
 }
 
-Scanner.prototype.fix_used_output = function (txid, vout, usedTxid, usedBlockheight, sql_query) {
-  sql_query.push(squel.update()
-    .table('outputs')
-    .set('used', true)
-    .set('usedTxid', usedTxid)
-    .set('usedBlockheight', usedBlockheight)
-    .where('txid = ? AND n = ?', txid, vout)
-    .toString())
+Scanner.prototype.fix_used_output = function (txid, vout, usedTxid, usedBlockheight, outputs_bulk) {
+  outputs_bulk.push({
+    set: {used: true, usedTxid: usedTxid, usedBlockheight: usedBlockheight},
+    where: {txid: txid, n: vout}
+  })
 }
 
 var calc_fee = function (raw_transaction_data) {
@@ -1613,6 +1607,69 @@ var to_discrete = function (raw_transaction_data) {
   return raw_transaction_data
 }
 
+var execute_bulks_parallel = function (self, bulks, callback) {
+  // console.log('execute_bulks_parallel - bulks = ', JSON.stringify(bulks))
+  async.each(bulks, function (bulk, cb) {
+    execute_bulk(self, bulk, cb)
+  }, callback)
+}
+
+var execute_bulk = function (self, bulk, callback) {
+  // console.log('execute_bulk - bulk = ', JSON.stringify(bulk))
+  var sql_query = to_sql_multi_condition_update(bulk)
+  self.sequelize.query(sql_query)
+    .then(function () { return callback() })
+    .catch(callback)
+}
+
+var to_sql_multi_condition_update = function (bulk, callback) {
+  // console.log('to_sql_multi_condition_update - bulk = ', JSON.stringify(bulk))
+  var table_name = bulk.table_name
+  var updates = bulk.updates
+  var attributes_to_set = {}
+  var conditions = updates.map(function (update) { return to_sql_condition(update.where) })
+  // console.log('to_sql_multi_condition_update - conditions = ', JSON.stringify(conditions))
+  updates.forEach(function (update) {
+    Object.keys(update.set).forEach(function (attribute) {
+      attributes_to_set[attribute] = attributes_to_set[attribute] || []
+      attributes_to_set[attribute].push({
+        value: update.set[attribute],
+        conditions: update.where
+      })
+    })
+  })
+  // console.log('to_sql_multi_condition_update - attributes_to_set = ', JSON.stringify(attributes_to_set))
+
+  var sql_query = 'UPDATE ' + table_name + '\n'
+  sql_query += '  SET '
+  sql_query += Object.keys(attributes_to_set).map(function (attribute) {
+    var attribute_to_set_clause = to_sql_column(attribute) + ' = CASE\n'
+    attributes_to_set[attribute].forEach(function (obj) {
+      attribute_to_set_clause += '    WHEN ' + to_sql_condition(obj.conditions) + ' THEN ' + to_sql_value(obj.value) + '\n'
+    })
+    attribute_to_set_clause += '  END'
+    return attribute_to_set_clause
+  }).join(',\n') + '\n'
+  sql_query += 'WHERE ' + to_sql_conditions(conditions)
+  // console.log('to_sql_multi_condition_update - sql_query = ', JSON.stringify(sql_query))
+  return sql_query
+}
+
+var to_sql_condition = function (where_obj) {
+  // console.log('to_sql_condition - where_obj = ', JSON.stringify(where_obj))
+  return '(' + Object.keys(where_obj).map(function (key) {
+    // console.log('to_sql_condition - where_obj[' + key + '] = ', where_obj[key])
+    var value = to_sql_value(where_obj[key])
+    // console.log('to_sql_condition - value = ', value)
+    key = to_sql_column(key)
+    return key + ' = ' + value
+  }).join(' AND ') + ')'
+}
+
+var to_sql_conditions = function (conditions) {
+  return '(' + conditions.join(' OR ') + ')'
+}
+
 Scanner.prototype.transmit = function (txHex, callback) {
   var self = this
   if (typeof txHex !== 'string') {
@@ -1649,30 +1706,21 @@ var to_sql_fields = function (obj, options) {
 }
 
 var to_sql_values = function (values) {
-  return '(' + values.map(function (value) {
-    return '\'' + value + '\'' 
-  }).join(', ') + ')'
+  return '(' + values.map(to_sql_value).join(', ') + ')'
+}
+
+var to_sql_value = function (value) {
+  return (typeof value === 'string') ? ('\'' + value + '\'') : value
+}
+
+var to_sql_column = function (column) {
+  return '"' + column + '"'
 }
 
 var to_sql_update_string = function (obj) {
-  var res = '('
-  // keys
-  Object.keys(obj).forEach(function (key, i, keys) {
-    res += key
-    if (i < keys.length - 1) {
-      res += ', '
-    }
-  })
-  res += ') = ('
-  // values
-  Object.keys(obj).forEach(function (key, i, keys) {
-    res += (typeof obj[key] === 'string') ? ('\'' + obj[key] + '\'') : obj[key]
-    if (i < keys.length - 1) {
-      res += ', '
-    }
-  })
-  res += ')'
-  return res
+  var keys = Object.keys(obj).map(to_sql_column).join(', ')
+  var values = Object.keys(obj).map(function (key) { return to_sql_value(obj[key]) }).join(', ')
+  return '(' + keys + ') = (' + values + ')'
 }
 
 module.exports = Scanner
