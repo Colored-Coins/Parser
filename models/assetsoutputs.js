@@ -26,12 +26,12 @@ module.exports = function (sequelize, DataTypes) {
     }
   },
   {
-    // classMethods: {
-    //   associate: function (models) {
-    //     AssetsOutputs.belongsTo(models.outputs, { foreignKey: 'output_id', as: 'output' })
-    //     AssetsOutputs.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
-    //   }
-    // },
+    classMethods: {
+      associate: function (models) {
+        AssetsOutputs.belongsTo(models.outputs, { foreignKey: 'output_id', as: 'output' })
+        AssetsOutputs.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
+      }
+    },
     indexes: [
       {
         fields: ['assetId']

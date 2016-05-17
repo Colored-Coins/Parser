@@ -98,14 +98,13 @@ Scanner.prototype.scan_blocks = function (err) {
         raw_block_data = null
       }
       if (!raw_block_data || (raw_block_data.height === next_block - 1 && raw_block_data.hash === last_hash)) {
-        // TODO oded
-        // setTimeout(function () {
-        //   if (debug) {
-        //     job = 'mempool_scan'
-        //     console.time(job)
-        //   }
-        //   self.parse_new_mempool(cb)
-        // }, 500)
+        setTimeout(function () {
+          if (debug) {
+            job = 'mempool_scan'
+            console.time(job)
+          }
+          self.parse_new_mempool(cb)
+        }, 500)
         cb()
       } else if (!raw_block_data.previousblockhash || raw_block_data.previousblockhash === last_hash) {
         // logger.debug('parsing block')
@@ -938,12 +937,12 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
   var end = function (in_transactions) {
     var inputsToFixNow = []
     in_transactions.forEach(function (in_transaction) {
-      in_transaction.vout.forEach(function (vout) {
+      in_transaction.vout.forEach(function (output) {
         var input
-        if (in_transaction.txid + ':' + vout.n in inputsToFix) {
-          input = inputsToFix[in_transaction.txid + ':' + vout.n]
-          input.value = vout.value
-          input.output_id = vout.id
+        if (in_transaction.txid + ':' + output.n in inputsToFix) {
+          input = inputsToFix[in_transaction.txid + ':' + output.n]
+          input.value = output.value
+          input.output_id = output.id
           inputsToFixNow.push(input)
         }
       })
@@ -955,9 +954,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
     })
 
     var all_fixed = (inputsToFixNow.length === Object.keys(inputsToFix).length)
-    if (!all_fixed) {
-      // console.log('fix_vin: txid ', raw_transaction_data.txid + ' all_fixed = false. inputsToFixNow.length = ' + inputsToFixNow.length + ', inputsToFix.length = ' + Object.keys(inputsToFix).length)
-    }
     if (all_fixed) {
       calc_fee(raw_transaction_data)
       if (raw_transaction_data.fee < 0) {
@@ -977,14 +973,12 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
   }
 
   var txids = {}
-  var txids_indexes = []
   raw_transaction_data.vin.forEach(function (vin) {
     if (vin.coinbase) {
       coinbase = true
     } else {
       inputsToFix[vin.txid + ':' + vin.vout] = vin
       txids[vin.txid] = true
-      txids_indexes.push({txid: vin.txid, n: vin.vout})
     }
   })
 
@@ -994,26 +988,22 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
 
   var find_vin_transactions_query = '' +
     'SELECT\n' +
-    '  txid,\n' +
-    '  to_json(array(\n' +
-    '    SELECT\n' +
-    '      vout\n' +
-    '    FROM\n' +
-    '      (SELECT\n' +
-    '        id,\n' +
-    '        n,\n' +
-    '        value\n' +
-    '      FROM\n' +
-    '        outputs\n' +
-    '      WHERE\n' +
-    '        outputs.txid = transactions.txid AND ' + to_sql_conditions(txids_indexes) + '\n' +
-    '      ORDER BY n) AS vout)) AS vout\n' +
+    '  transactions.txid,\n' +
+    '  outputs.n,\n' +
+    '  outputs.id,\n' +
+    '  outputs.value\n' +
     'FROM transactions\n' +
-    'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) ' +
-    'AND (transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ');'
+    'JOIN outputs on outputs.txid = transactions.txid\n' +
+    'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND (transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ');'
   // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
   self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
     .then(function (vin_transactions) {
+      vin_transactions = _(vin_transactions)
+        .groupBy('txid')
+        .transform(function (result, vout, txid) {
+          result.push({txid: txid, vout: vout})
+        }, [])
+        .value()
       // console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
       end(vin_transactions)
     })
@@ -1534,6 +1524,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
     console.timeEnd('priority_parse: '+ txid)
     callback(err)
   }
+  
   async.waterfall([
     function (cb) {
       if (~self.priority_parse_list.indexOf(txid)) {
