@@ -809,7 +809,8 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
         .set('assetId', asset.assetId)
         .set('issueTxid', asset.issueTxid)
         .set('amount', asset.amount)
-        .set('output_id', transaction_data.vout[out_index].id)
+        .set('output_id', transaction_data.vout[out_index].id ||
+          squel.select().field('id').from('outputs').where('txid = ? AND n = ?', transaction_data.txid, out_index))  // if no id (such as in the mempool case), go and fetch it
         .set('index_in_output', index_in_output)
         .toString() + ' on conflict ("assetId", output_id, index_in_output) do nothing')
       if (asset.amount && transaction_data.vout[out_index].scriptPubKey && transaction_data.vout[out_index].scriptPubKey.addresses) {
@@ -1094,34 +1095,62 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     function (cb) {
       var find_transaction_query = '' +
         'SELECT\n' +
-        '  transactions.*,\n' +
+        '  transactions.*,\n' + 
         '  to_json(array(\n' +
         '    SELECT\n' +
-        '      inputs\n' +
+        '      vin\n' +
         '    FROM\n' +
-        '      inputs\n' +
-        '    WHERE\n' +
-        '      inputs.input_txid = transactions.txid\n' +
-        '    ORDER BY input_index)) AS vin,\n' +
+        '      (SELECT\n' +
+        '       inputs.*,\n' +
+        '       to_json(array(\n' +
+        '          SELECT\n' +
+        '            assets\n' +
+        '          FROM\n' +
+        '            (SELECT\n' +
+        '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
+        '              assets.*\n' +
+        '            FROM\n' +
+        '              assetsoutputs\n' +
+        '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
+        '            WHERE assetsoutputs.output_id = inputs.output_id ORDER BY index_in_output)\n' +
+        '        AS assets)) AS assets\n' +
+        '      FROM\n' +
+        '        inputs\n' +
+        '      WHERE\n' +
+        '        inputs.input_txid = transactions.txid\n' +
+        '      ORDER BY input_index) AS vin)) AS vin,\n' +
         '  to_json(array(\n' +
         '    SELECT\n' +
-        '      outputs\n' +
+        '      vout\n' +
         '    FROM\n' +
-        '      outputs\n' +
-        '    WHERE\n' +
-        '      outputs.txid = transactions.txid\n' +
-        '    ORDER BY n)) AS vout\n' +
+        '      (SELECT\n' +
+        '        outputs.*,\n' +
+        '        to_json(array(\n' +
+        '         SELECT assets FROM\n' +
+        '           (SELECT\n' +
+        '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
+        '              assets.*\n' +
+        '            FROM\n' +
+        '              assetsoutputs\n' +
+        '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
+        '            WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output)\n' +
+        '        AS assets)) AS assets\n' +
+        '      FROM\n' +
+        '        outputs\n' +
+        '      WHERE outputs.txid = transactions.txid\n' +
+        '      ORDER BY n) AS vout)) AS vout\n' +
         'FROM\n' +
         '  transactions\n' +
         'WHERE\n' +
-        '  transactions.txid = :txid;'
-      self.sequelize.query(find_transaction_query, {replacements: {txid: raw_transaction_data.txid}, type: self.sequelize.QueryTypes.SELECT, logging: console.log, benchmark: true})
+        '  txid = :txid;'
+      self.sequelize.query(find_transaction_query, {replacements: {txid: raw_transaction_data.txid}, type: self.sequelize.QueryTypes.SELECT})
         .then(function (transactions) { cb(null, transactions[0]) })
         .catch(cb)
     },
     function (l_transaction_data, cb) {
       transaction_data = l_transaction_data
       if (transaction_data) {
+        console.log('parse_new_mempool_transaction - #1 found in DB: transaction = ', transaction_data.txid)
         raw_transaction_data = transaction_data
         blockheight = raw_transaction_data.blockheight || -1
         cb(null, blockheight)
@@ -1137,6 +1166,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     },
     function (l_blockheight, cb) {
       blockheight = l_blockheight
+      console.log('parse_new_mempool_transaction - #2 found in DB: blockheight = ', blockheight)
       if (transaction_data) return cb()
       if (raw_transaction_data.time) {
         raw_transaction_data.time = raw_transaction_data.time * 1000
@@ -1156,18 +1186,35 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     },
     function (cb) {
       if (raw_transaction_data.iosparsed) {
-        cb(null, null, true)
+        console.log('parse_new_mempool_transaction - #3.1 transaction.iosparsed = true')
+        cb(null, true)
       } else {
         did_work = true
-        self.fix_vin(raw_transaction_data, blockheight, sql_query, cb)
+        var inputs_bulk = []
+        var outputs_bulk = []
+        console.log('parse_new_mempool_transaction - #3.2 fix_vin')
+        self.fix_vin(raw_transaction_data, blockheight, inputs_bulk, outputs_bulk, function (err, all_fixed) {
+          if (err) return cb(err)
+          if (inputs_bulk.length) {
+            inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
+            sql_query.push(to_sql_multi_condition_update(inputs_bulk))
+          }
+          if (outputs_bulk.length) {
+            outputs_bulk = {table_name: 'outputs', updates: outputs_bulk}
+            sql_query.push(to_sql_multi_condition_update(outputs_bulk))
+          }
+          cb(null, all_fixed)
+        })
       }
     },
     function (all_fixed, cb) {
       if (raw_transaction_data.ccparsed) {
+        console.log('parse_new_mempool_transaction - #4.1 raw_transaction_data.ccparsed = true')
         cb(null, null)
       } else {
         raw_transaction_data.iosparsed = all_fixed
         if (all_fixed && raw_transaction_data.colored && !raw_transaction_data.ccparsed) {
+          console.log('parse_new_mempool_transaction - #4.2 parse_cc_tx')
           self.parse_cc_tx(raw_transaction_data, sql_query)
           raw_transaction_data.ccparsed = true
           did_work = true
@@ -1232,7 +1279,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       new_mempool_txs.push({
         txid: raw_transaction_data.txid,
         iosparsed: iosparsed,
-        colored: raw_transaction_data.colored,
+        colored: raw_transaction_data.colored || false,
         ccparsed: ccparsed
       })
       if (!sql_query.length) return cb()
@@ -1249,7 +1296,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       if ('code' in err && err.code === -5) {
         console.error('Can\'t find tx.')
       } else {
-        console.error('parse_mempool_cargo: ', err)
+        console.error('parse_mempool_cargo: ', err, JSON.stringify(err))
         return callback(err)
       }
     }
@@ -1309,11 +1356,9 @@ Scanner.prototype.revert_txids = function (callback) {
                 colored_txids.push(txid)
               }
               sql_query = sql_query.join(';\n')
-              self.sequelize.transaction(function (sql_transaction) {
-                return self.sequelize.query(sql_query)
-                  .then(function () { cb(null, revert_flags_txids) })
-                  .catch(cb)
-              })
+              return self.sequelize.query(sql_query)
+                .then(function () { cb(null, revert_flags_txids) })
+                .catch(cb)
             })
           } else {
             console.log('found tx that do not need to revert', txid)
@@ -1438,8 +1483,11 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       console.log('end find mempool bitcoind txs')
       console.log('parsing mempool txs (' + whole_txids.length + ')')
       console.log('start xoring')
+      // console.log('db_parsed_txids = ', db_parsed_txids.map(function (txid) { return txid }))
       var txids_intersection = _.intersection(db_parsed_txids, whole_txids) // txids that allready parsed in db
+      // console.log('txids_intersection = ', txids_intersection.map(function (txid) { return txid }))
       new_txids = _.xor(txids_intersection, whole_txids) // txids that not parsed in db
+      // console.log('new_txids = ', new_txids.map(function (txid) { return txid }))
       db_parsed_txids = _.xor(txids_intersection, db_parsed_txids) // the rest of the txids in the db (not yet found in mempool)
       txids_intersection = _.intersection(db_unparsed_txids, whole_txids) // txids that in mempool and db but not fully parsed
       db_unparsed_txids = _.xor(txids_intersection, db_unparsed_txids) // the rest of the txids in the db (not yet found in mempool, not fully parsed)
