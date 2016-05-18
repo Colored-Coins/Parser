@@ -951,7 +951,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
 
     inputsToFixNow.forEach(function (input) {
       self.fix_input(input, inputs_bulk)
-      self.fix_used_output(input.txid, input.vout, raw_transaction_data.txid, blockheight, outputs_bulk)
+      self.fix_used_output(input.output_id, raw_transaction_data.txid, blockheight, outputs_bulk)
     })
 
     var all_fixed = (inputsToFixNow.length === Object.keys(inputsToFix).length)
@@ -996,8 +996,8 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
     'FROM transactions\n' +
     'JOIN outputs on outputs.txid = transactions.txid\n' +
     'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND (transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ');'
-  // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
-  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
+  console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
+  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT/*, logging: console.log, benchmark: true*/})
     .then(function (vin_transactions) {
       vin_transactions = _(vin_transactions)
         .groupBy('txid')
@@ -1005,7 +1005,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
           result.push({txid: txid, vout: vout})
         }, [])
         .value()
-      // console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
+      console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
       end(vin_transactions)
     })
     .catch(callback)
@@ -1018,10 +1018,10 @@ Scanner.prototype.fix_input = function (input, inputs_bulk) {
   })
 }
 
-Scanner.prototype.fix_used_output = function (txid, vout, usedTxid, usedBlockheight, outputs_bulk) {
+Scanner.prototype.fix_used_output = function (output_id, usedTxid, usedBlockheight, outputs_bulk) {
   outputs_bulk.push({
     set: {used: true, usedTxid: usedTxid, usedBlockheight: usedBlockheight},
-    where: {txid: txid, n: vout}
+    where: {id: output_id}
   })
 }
 
@@ -1356,7 +1356,7 @@ Scanner.prototype.revert_txids = function (callback) {
                 colored_txids.push(txid)
               }
               sql_query = sql_query.join(';\n')
-              return self.sequelize.query(sql_query)
+              return self.sequelize.query(sql_query, {logging: console.log, benchmark: true})
                 .then(function () { cb(null, revert_flags_txids) })
                 .catch(cb)
             })
@@ -1658,11 +1658,15 @@ var execute_bulks_parallel = function (self, bulks, callback) {
 }
 
 var execute_bulk = function (self, bulk, callback) {
-  // console.log('execute_bulk - bulk = ', JSON.stringify(bulk))
   if (!bulk.updates || !bulk.updates.length) return callback()
   var sql_query = to_sql_multi_condition_update(bulk)
+  console.log('execute_bulk - bulk = ', JSON.stringify(bulk.table_name) + ', updates.length = ', bulk.updates.length)
+  console.time('execute_bulk - ' + bulk.table_name)
   self.sequelize.query(sql_query)
-    .then(function () { return callback() })
+    .then(function () { 
+      console.timeEnd('execute_bulk - ' + bulk.table_name)
+      return callback() 
+    })
     .catch(callback)
 }
 
@@ -1756,6 +1760,10 @@ var to_sql_values = function (values) {
 
 var to_sql_value = function (value) {
   return (typeof value === 'string') ? ('\'' + value + '\'') : value
+}
+
+var to_sql_columns = function (columns) {
+  return columns.map(to_sql_column)
 }
 
 var to_sql_column = function (column) {
