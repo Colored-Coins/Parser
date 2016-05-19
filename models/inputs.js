@@ -47,20 +47,6 @@ module.exports = function (sequelize, DataTypes) {
         Inputs.belongsTo(models.outputs, { foreignKey: 'output_id', as: 'previousOutput', constraints: false })  // constraints=false because an input may be inserted to mempool before its corresponding output (orphand)
       }
     },
-    getterMethods: {
-      previousOutput: function () {
-        var res = this.getDataValue('previousOutput')
-        if (!res) return { addresses: [] }  // backward compatability
-        res = res.scriptPubKey
-        delete res.value
-        return res
-      }
-    },
-    setterMethods: {
-      previousOutput: function (value) {
-        this.setDataValue('previousOutput', value)
-      }
-    },
     indexes: [
       {
         fields: ['input_txid']

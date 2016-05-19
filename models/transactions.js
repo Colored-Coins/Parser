@@ -79,12 +79,6 @@ module.exports = function (sequelize, DataTypes) {
         Transactions.belongsToMany(models.assets, { as: 'assets', through: models.assetstransactions, foreignKey: 'txid', otherKey: 'assetId' })
       }
     },
-    getterMethods: {
-      confirmations: function () {
-        var properties = Transactions.properties
-        return (properties && properties.last_block && this.blockheight > -1) ? (properties.last_block - this.blockheight + 1) : 0
-      }
-    },
     indexes: [
       {
         fields: ['blockheight']

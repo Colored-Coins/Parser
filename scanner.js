@@ -626,6 +626,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       console.time('fix_transactions')
       console.time('fix_transactions - each')
       async.each(transactions_datas, function (transaction_data, cb) {
+        transaction_data = transaction_data.toJSON()
         self.fix_transaction(transaction_data, inputs_bulk, outputs_bulk, transactions_bulk, function (err, all_fixed) {
           if (err) return cb(err)
           if (!all_fixed) return cb()
@@ -920,7 +921,7 @@ Scanner.prototype.fix_transaction = function (raw_transaction_data, inputs_bulk,
   })
 }
 
-Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_bulk, outputs_bulk, callback) {
+Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_bulk, outputs_bulk, include_asstes, callback) {
   // fixing a transaction - we need to fulfill the condition where a transaction is iosparsed if and only if
   // all of its inputs are fixed. 
   // An input is fixed when it is assigned with the output_id of its associated output, and the output is marked as used.
@@ -930,6 +931,11 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
   var self = this
   var coinbase = false
   var inputsToFix = {}
+
+  if (typeof include_asstes === 'function') {
+    callback = include_asstes
+    include_asstes = false
+  }
 
   if (!raw_transaction_data.vin) {
     return callback('transaction ' + raw_transaction_data.txid + ' does not have vin.')
@@ -944,6 +950,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
           input = inputsToFix[in_transaction.txid + ':' + output.n]
           input.value = output.value
           input.output_id = output.id
+          input.assets = output.assets
           inputsToFixNow.push(input)
         }
       })
@@ -987,25 +994,80 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
     return end([])
   }
 
-  var find_vin_transactions_query = '' +
-    'SELECT\n' +
-    '  transactions.txid,\n' +
-    '  outputs.n,\n' +
-    '  outputs.id,\n' +
-    '  outputs.value\n' +
-    'FROM transactions\n' +
-    'JOIN outputs on outputs.txid = transactions.txid\n' +
-    'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND (transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ');'
+  var find_vin_transactions_query
+
+  if (include_asstes) {
+    find_vin_transactions_query = '' +
+      'SELECT\n' +
+      '  transactions.txid,\n' +
+      '  to_json(array(\n' +
+      '    SELECT\n' +
+      '      vin\n' +
+      '    FROM\n' +
+      '      (SELECT\n' +
+      '       to_json(array(\n' +
+      '          SELECT\n' +
+      '            assets\n' +
+      '          FROM\n' +
+      '            (SELECT\n' +
+      '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
+      '              assets.*\n' +
+      '            FROM\n' +
+      '              assetsoutputs\n' +
+      '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
+      '            WHERE assetsoutputs.output_id = inputs.output_id ORDER BY index_in_output)\n' +
+      '        AS assets)) AS assets\n' +
+      '      FROM\n' +
+      '        inputs\n' +
+      '      WHERE\n' +
+      '        inputs.input_txid = transactions.txid\n' +
+      '      ORDER BY input_index) AS vin)) AS vin,\n' +
+      '  to_json(array(\n' +
+      '    SELECT\n' +
+      '      vout\n' +
+      '    FROM\n' +
+      '      (SELECT\n' +
+      '        outputs."id", outputs."n", outputs."value",\n' +
+      '        to_json(array(\n' +
+      '         SELECT assets FROM\n' +
+      '           (SELECT\n' +
+      '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
+      '              assets.*\n' +
+      '            FROM\n' +
+      '              assetsoutputs\n' +
+      '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
+      '            WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output)\n' +
+      '        AS assets)) AS assets\n' +
+      '      FROM\n' +
+      '        outputs\n' +
+      '      WHERE outputs.txid = transactions.txid\n' +
+      '      ORDER BY n) AS vout)) AS vout\n' +
+      'FROM\n' +
+      '  transactions\n' +
+      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND (transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ');'
+  } else {
+    find_vin_transactions_query = '' +
+      'SELECT\n' +
+      '  transactions.txid,\n' +
+      '  outputs.n,\n' +
+      '  outputs.id,\n' +
+      '  outputs.value\n' +
+      'FROM transactions\n' +
+      'JOIN outputs on outputs.txid = transactions.txid\n' +
+      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND (transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ');'
+  }
   console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
-  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT/*, logging: console.log, benchmark: true*/})
+  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
     .then(function (vin_transactions) {
-      vin_transactions = _(vin_transactions)
+      console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
+      if (!include_asstes) {
+        vin_transactions = _(vin_transactions)
         .groupBy('txid')
         .transform(function (result, vout, txid) {
           result.push({txid: txid, vout: vout})
         }, [])
         .value()
-      console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
+      }
       end(vin_transactions)
     })
     .catch(callback)
@@ -1193,7 +1255,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         var inputs_bulk = []
         var outputs_bulk = []
         console.log('parse_new_mempool_transaction - #3.2 fix_vin')
-        self.fix_vin(raw_transaction_data, blockheight, inputs_bulk, outputs_bulk, function (err, all_fixed) {
+        self.fix_vin(raw_transaction_data, blockheight, inputs_bulk, outputs_bulk, true, function (err, all_fixed) {
           if (err) return cb(err)
           if (inputs_bulk.length) {
             inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
@@ -1762,12 +1824,19 @@ var to_sql_value = function (value) {
   return (typeof value === 'string') ? ('\'' + value + '\'') : value
 }
 
-var to_sql_columns = function (columns) {
-  return columns.map(to_sql_column)
+var to_sql_columns = function (model, options) {
+  var columns = []
+  var table_name = model.getTableName()
+  Object.keys(model.attributes).forEach(function (attribute) {
+    if (!options || !options.exclude || options.exclude.indexOf(attribute) === -1) {
+      columns.push(table_name + '.' + to_sql_column(attribute))
+    }
+  })
+  return columns.join(', ')
 }
 
-var to_sql_column = function (column) {
-  return '"' + column + '"'
+var to_sql_column = function (attribute) {
+  return '"' + attribute + '"'
 }
 
 var to_sql_update_string = function (obj) {
