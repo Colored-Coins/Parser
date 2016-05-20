@@ -114,12 +114,11 @@ Scanner.prototype.scan_blocks = function (err) {
         }
         self.parse_new_block(raw_block_data, cb)
       } else {
-        // TODO oded
-        // if (debug) {
-        //   job = 'reverting_block'
-        //   console.time(job)
-        // }
-        // self.revert_block(next_block - 1, cb)
+        if (debug) {
+          job = 'reverting_block'
+          console.time(job)
+        }
+        self.revert_block(next_block - 1, cb)
       }
     }
   ], function (err) {
@@ -134,6 +133,107 @@ Scanner.prototype.scan_blocks = function (err) {
   })
 }
 
+Scanner.prototype.revert_block = function (block_height, callback) {
+  var self = this
+  console.log('Reverting block: ' + block_height)
+  var find_block_query = '' + 
+    'SELECT\n' +
+    '  hash,\n' +
+    '  previousblockhash,\n' +
+    '  to_json(array(\n' +
+    '    SELECT\n' +
+    '      transactions.txid\n' +
+    '    FROM\n' +
+    '      (SELECT\n' +
+    '          txid\n' +
+    '        FROM\n' +
+    '          transactions\n' +
+    '        WHERE\n' +
+    '          transactions.blockheight = blocks.height\n' +
+    '        ORDER BY\n' +
+    '          transactions.index_in_block) AS transactions)) AS tx\n' +
+    'FROM\n' +
+    '  blocks\n' +
+    'WHERE\n' +
+    '  blocks.height = :height'
+
+  self.sequelize.query(find_block_query, {type: self.sequelize.QueryTypes.SELECT, replacements: {height: block_height}, logging: console.log, benchmark: true})
+    .then(function (block_data) {
+      if (!block_data || !block_data.length) return callback('no block for height ' + block_height)
+      block_data = block_data[0]
+      if (!block_data.tx) return callback('no transactions in block for height ' + block_height)
+      var block_id = {
+        height: block_height,
+        hash: block_data.hash
+      }
+
+      // logger.debug('reverting '+block_data.tx.length+' txs.')
+      var txids = []
+      var colored_txids = []
+      var sql_query = []
+      async.mapSeries(block_data.tx.reverse(), function (txid, cb) {
+        txids.push(txid)
+        self.revert_tx(txid, sql_query, function (err, colored, revert_flags_txids) {
+          if (err) return cb(err)
+          if (colored) {
+            colored_txids.push(txid)
+          }
+          cb(null, revert_flags_txids)
+        })
+      },
+      function (err, revert_flags_txids) {
+        if (err) return callback(err)
+        revert_flags_txids = [].concat.apply([], revert_flags_txids)
+        revert_flags_txids = _.uniq(revert_flags_txids)
+        console.log('revert flags txids:', revert_flags_txids)
+        if (revert_flags_txids.length) {
+          sql_query.push(squel.update()
+            .table('transactions')
+            .set('iosparsed', false)
+            .set('ccparsed', false)
+            .where('txid IN ?', revert_flags_txids)
+            .toString())
+        }
+        // logger.debug('executing bulks')
+        sql_query = sql_query.join(';\n')
+        self.sequelize.query(sql_query, {logging: console.log, benchmark: true})
+          .then(function () {
+            txids.forEach(function (txid) {
+              self.emit('revertedtransaction', {txid: txid})
+            })
+            colored_txids.forEach(function (txid) {
+              self.emit('revertedcctransaction', {txid: txid})
+            })
+            self.fix_mempool(function (err) {
+              // logger.debug('deleting block')
+              var delete_blocks_query = squel.delete()
+                .from('blocks')
+                .where('height = ?', block_height)
+                .toString()
+              self.sequelize.query(delete_blocks_query, {logging: console.log, benchmark: true})
+                .then(function () {
+                  self.emit('revertedblock', block_id)
+                  set_last_hash(block_data.previousblockhash)
+                  set_last_block(block_data.height - 1)
+                  set_next_hash(null)
+                  callback()              
+                }).catch(callback)
+            })
+          }).catch(callback)
+      })
+    }).catch(callback)
+}
+
+Scanner.prototype.fix_mempool = function (callback) {
+  var fix_mempool_query = squel.update()
+    .table('transactions')
+    .set('iosparsed', false)
+    .set('ccparsed', false)
+    .where('blockheight = -1')
+    .toString()
+  this.sequelize.query(fix_mempool_query, {logging: console.log, benchmark: true}).then(function () { callback() }).catch(callback)
+}
+
 Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
   var self = this
   console.log('reverting tx ' + txid)
@@ -145,6 +245,7 @@ Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
     '      vin\n' +
     '    FROM\n' +
     '      (SELECT\n' +
+    '        inputs.input_index,\n' +
     '        inputs.txid,\n' +
     '        inputs.vout\n' +
     '      FROM\n' +
@@ -158,7 +259,7 @@ Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
     '    FROM\n' +
     '      (SELECT\n' +
     '        outputs.id,\n' +
-    '        outputs.usedTxid,\n' +
+    '        outputs."usedTxid"\n' +
     '      FROM\n' +
     '        outputs\n' +
     '      WHERE outputs.txid = transactions.txid\n' +
@@ -172,8 +273,8 @@ Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
       if (!transactions || !transactions.length) return callback()
       var next_txids = []
       var transaction = transactions[0]
-      self.revert_vin(txid, transaction.vout, sql_query)
-      self.revert_vout(transaction.vin, sql_query)
+      self.revert_vin(txid, transaction.vin, sql_query)
+      self.revert_vout(transaction.vout, sql_query)
       sql_query.push(squel.delete()
         .from('addressestransactions')
         .where('txid = ?', txid)
@@ -200,16 +301,18 @@ Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
 Scanner.prototype.revert_vin = function (txid, vin, sql_query) {
   if (!vin || !vin.length || vin[0].coinbase) return
   vin.forEach(function (input) {
-    sql_query.push(squel.update()
-      .from('outputs')
-      .set('used', false)
-      .set('usedTxid', null)
-      .set('usedBlockheight', null)
-      .where('txid = ? AND n = ? AND usedTxid = ?', input.txid, input.vout, txid)
-      .toString())
+    if (input.txid && input.vout) {
+      sql_query.push(squel.update()
+        .table('outputs')
+        .set('used', false)
+        .set('usedTxid', null)
+        .set('usedBlockheight', null)
+        .where('txid = ? AND n = ? AND usedTxid = ?', input.txid, input.vout, txid)
+        .toString())
+    }
     sql_query.push(squel.delete()
       .from('inputs')
-      .where('txid = ? AND vout = ?', input.txid, input.vout)
+      .where('input_txid = ? AND input_index = ?', txid, input.input_index)
       .toString())
   })
 }
@@ -1149,6 +1252,7 @@ Scanner.prototype.get_next_block_to_cc_parse = function (limit, callback) {
 }
 
 Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data, sql_query, emits, callback) {
+  console.log('parse_new_mempool_transaction, txid = ', raw_transaction_data.txid)
   var self = this
   var transaction_data
   var did_work = false
@@ -1442,6 +1546,8 @@ Scanner.prototype.revert_txids = function (callback) {
         revert_flags_txids = [].concat.apply([], revert_flags_txids)
         revert_flags_txids = _.uniq(revert_flags_txids)
         console.log('revert flags txids:', revert_flags_txids)
+        if (!revert_flags_txids.length) return callback()
+
         var sql_query = squel.update()
           .table('transactions')
           .set('iosparsed', false)
@@ -1475,6 +1581,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   var new_txids
   var cargo_size
 
+  console.log('parse_new_mempool')
   if (properties.scanner.mempool !== 'true') return callback()
   console.log('start reverting (if needed)')
   async.waterfall([
