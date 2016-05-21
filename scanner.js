@@ -657,7 +657,7 @@ Scanner.prototype.scan_mempol_only = function (err) {
 Scanner.prototype.fix_blocks = function (err, callback) {
   var self = this
   if (err) {
-    console.error('fix_blocks: err = ', JSON.stringify(err))
+    console.error('fix_blocks: err = ', err, JSON.stringify(err))
     return self.fix_blocks(null, callback)
   }
   var emits = []
@@ -747,10 +747,10 @@ Scanner.prototype.fix_blocks = function (err, callback) {
         if (err) return callback(err)
         console.timeEnd('fix_transactions - each')
         console.time('fix_transactions - fix bulk')
-        inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
-        outputs_bulk = {table_name: 'outputs', updates: outputs_bulk}
-        transactions_bulk = {table_name: 'transactions', updates: transactions_bulk}
-        close_transactions_bulk = {table_name: 'transactions', updates: close_transactions_bulk}
+        inputs_bulk = {model: self.Inputs, updates: inputs_bulk}
+        outputs_bulk = {model: self.Outputs, updates: outputs_bulk}
+        transactions_bulk = {model: self.Transactions, updates: transactions_bulk}
+        close_transactions_bulk = {model: self.Transactions, updates: close_transactions_bulk}
         execute_bulks_parallel(self, [inputs_bulk, outputs_bulk, transactions_bulk], function (err) {
           console.timeEnd('fix_transactions - fix bulk')
           if (err) return callback(err)
@@ -1159,10 +1159,10 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
       'JOIN outputs on outputs.txid = transactions.txid\n' +
       'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND (transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ');'
   }
-  console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
+  // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
   self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
     .then(function (vin_transactions) {
-      console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
+      // console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
       if (!include_asstes) {
         vin_transactions = _(vin_transactions)
         .groupBy('txid')
@@ -1362,11 +1362,11 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         self.fix_vin(raw_transaction_data, blockheight, inputs_bulk, outputs_bulk, true, function (err, all_fixed) {
           if (err) return cb(err)
           if (inputs_bulk.length) {
-            inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
+            inputs_bulk = {model: self.Inputs, updates: inputs_bulk}
             sql_query.push(to_sql_multi_condition_update(inputs_bulk))
           }
           if (outputs_bulk.length) {
-            outputs_bulk = {table_name: 'outputs', updates: outputs_bulk}
+            outputs_bulk = {model: self.Outputs, updates: outputs_bulk}
             sql_query.push(to_sql_multi_condition_update(outputs_bulk))
           }
           cb(null, all_fixed)
@@ -1829,17 +1829,66 @@ var execute_bulks_parallel = function (self, bulks, callback) {
 var execute_bulk = function (self, bulk, callback) {
   if (!bulk.updates || !bulk.updates.length) return callback()
   var sql_query = to_sql_multi_condition_update(bulk)
-  console.log('execute_bulk - bulk = ', JSON.stringify(bulk.table_name) + ', updates.length = ', bulk.updates.length)
-  console.time('execute_bulk - ' + bulk.table_name)
+  console.log('execute_bulk - bulk = ', JSON.stringify(bulk.model.getTableName()) + ', updates.length = ', bulk.updates.length)
+  console.time('execute_bulk - ' + bulk.model.getTableName())
   self.sequelize.query(sql_query)
     .then(function () { 
-      console.timeEnd('execute_bulk - ' + bulk.table_name)
+      console.timeEnd('execute_bulk - ' + bulk.model.getTableName())
       return callback() 
     })
     .catch(callback)
 }
 
 var to_sql_multi_condition_update = function (bulk) {
+  // console.log('to_sql_multi_condition_update - bulk = ', JSON.stringify(bulk))
+  var sql_query = ''
+  var model = bulk.model
+  var table_name = model.getTableName()
+  var updates = bulk.updates
+  var update_rows = []
+  var attributes_to_set = {}
+
+  // console.log('to_sql_multi_condition_update - conditions = ', JSON.stringify(conditions))
+  updates.forEach(function (update) {
+    update_rows.push(_.assign({}, update.set, update.where))
+    Object.keys(update.set).forEach(function (attribute) {
+      attributes_to_set[attribute] = attributes_to_set[attribute] || []
+      attributes_to_set[attribute].push({
+        value: update.set[attribute],
+        conditions: update.where
+      })
+    })
+  })
+
+  sql_query += 'CREATE TEMPORARY TABLE temp_' + table_name + '\n' +
+    '(\n' +
+  Object.keys(update_rows[0]).map(function (attribute) {  // assuming all updates are updating same attributes
+    return '  ' + to_sql_column(attribute) + ' ' + model.rawAttributes[attribute].type
+  }).join(',\n') + '\n' +
+  ') ON COMMIT DROP;\n' +
+  update_rows.map(function (update_row) {
+    var attributes = Object.keys(update_row)
+    return 'INSERT INTO temp_' + table_name + ' (' + attributes.map(to_sql_column).join(',') + ') VALUES ' + to_sql_values(attributes.map(function (attribute) { return update_row[attribute] })) + ';'
+  }).join('\n') + '\n' + 
+  'UPDATE ' + table_name + '\n' +
+  'SET\n' +
+  Object.keys(updates[0].set).map(function (attribute_to_set) {
+    attribute_to_set = to_sql_column(attribute_to_set)
+    return attribute_to_set + ' = temp_' + table_name  + '.' + attribute_to_set
+  }).join(', ') + '\n' +
+  'FROM temp_' + table_name + '\n' +
+  'WHERE\n' +
+  Object.keys(updates[0].where).map(function (where_attribute) {
+    where_attribute = to_sql_column(where_attribute)
+    return table_name + '.' + where_attribute + ' = temp_' + table_name + '.' + where_attribute
+  }).join(' AND ') + ';'
+
+  // console.log('to_sql_multi_condition_update - sql_query = ', JSON.stringify(sql_query))
+
+  return sql_query
+}
+
+var to_sql_multi_condition_update2 = function (bulk) {
   // console.log('to_sql_multi_condition_update - bulk = ', JSON.stringify(bulk))
   var table_name = bulk.table_name
   var updates = bulk.updates
