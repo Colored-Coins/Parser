@@ -750,10 +750,10 @@ Scanner.prototype.fix_blocks = function (err, callback) {
         if (err) return callback(err)
         console.timeEnd('fix_transactions - each')
         console.time('fix_transactions - fix bulk')
-        inputs_bulk = {model: self.Inputs, updates: inputs_bulk}
-        outputs_bulk = {model: self.Outputs, updates: outputs_bulk}
-        transactions_bulk = {model: self.Transactions, updates: transactions_bulk}
-        close_transactions_bulk = {model: self.Transactions, updates: close_transactions_bulk}
+        inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
+        outputs_bulk = {table_name: 'outputs', updates: outputs_bulk}
+        transactions_bulk = {table_name: 'transactions', updates: transactions_bulk}
+        close_transactions_bulk = {table_name: 'transactions', updates: close_transactions_bulk}
         execute_bulks_parallel(self, [inputs_bulk, outputs_bulk, transactions_bulk], function (err) {
           console.timeEnd('fix_transactions - fix bulk')
           if (err) return callback(err)
@@ -1163,7 +1163,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
       'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND (transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ');'
   }
   // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
-  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
+  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT, logging: console.log, benchmark: true})
     .then(function (vin_transactions) {
       // console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
       if (!include_asstes) {
@@ -1365,11 +1365,11 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         self.fix_vin(raw_transaction_data, blockheight, inputs_bulk, outputs_bulk, true, function (err, all_fixed) {
           if (err) return cb(err)
           if (inputs_bulk.length) {
-            inputs_bulk = {model: self.Inputs, updates: inputs_bulk}
+            inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
             sql_query.push(to_sql_multi_condition_update(inputs_bulk))
           }
           if (outputs_bulk.length) {
-            outputs_bulk = {model: self.Outputs, updates: outputs_bulk}
+            outputs_bulk = {table_name: 'outputs', updates: outputs_bulk}
             sql_query.push(to_sql_multi_condition_update(outputs_bulk))
           }
           cb(null, all_fixed)
@@ -1832,17 +1832,17 @@ var execute_bulks_parallel = function (self, bulks, callback) {
 var execute_bulk = function (self, bulk, callback) {
   if (!bulk.updates || !bulk.updates.length) return callback()
   var sql_query = to_sql_multi_condition_update(bulk)
-  console.log('execute_bulk - bulk = ', JSON.stringify(bulk.model.getTableName()) + ', updates.length = ', bulk.updates.length)
-  console.time('execute_bulk - ' + bulk.model.getTableName())
-  self.sequelize.query(sql_query, {logging: console.log, benchmark: true})
+  console.log('execute_bulk - bulk = ', JSON.stringify(bulk.table_name) + ', updates.length = ', bulk.updates.length)
+  console.time('execute_bulk - ' + bulk.table_name)
+  self.sequelize.query(sql_query)
     .then(function () { 
-      console.timeEnd('execute_bulk - ' + bulk.model.getTableName())
+      console.timeEnd('execute_bulk - ' + bulk.table_name)
       return callback() 
     })
     .catch(callback)
 }
 
-var to_sql_multi_condition_update = function (bulk) {
+var to_sql_multi_condition_update2 = function (bulk) {
   // console.log('to_sql_multi_condition_update - bulk = ', JSON.stringify(bulk))
   var sql_query = ''
   var model = bulk.model
@@ -1951,7 +1951,7 @@ var to_sql_multi_condition_update1 = function (bulk) {
   return sql_query
 }
 
-var to_sql_multi_condition_update2 = function (bulk) {
+var to_sql_multi_condition_update = function (bulk) {
   // console.log('to_sql_multi_condition_update - bulk = ', JSON.stringify(bulk))
   var table_name = bulk.table_name
   var updates = bulk.updates
