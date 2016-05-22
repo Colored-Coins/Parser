@@ -25,9 +25,10 @@
     "cc-assetid-encoder": "^0.6.0",
     "cc-get-assets-outputs": "^1.0.0",
     "cc-transaction": "^1.0.0",
-    "sequelize": "^3.19.3",
-    "squel": "^5.0.3",
+    "csv-write-stream": "^2.0.0",
     "lodash": "^4.11.1",
-    "mongoose": "~4.4.3"
+    "mongoose": "~4.4.3",
+    "sequelize": "^3.19.3",
+    "squel": "^5.0.3"
   }
 }

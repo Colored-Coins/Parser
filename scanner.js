@@ -6,6 +6,9 @@ var CCTransaction = require('cc-transaction')
 var bitcoin = require('bitcoin-async')
 var get_assets_outputs = require('cc-get-assets-outputs')
 var squel = require('squel').useFlavour('postgres')
+var csvWriter = require('csv-write-stream')
+var fs = require('fs')
+var path = require('path')
 squel.cls.DefaultQueryBuilderOptions.autoQuoteFieldNames = true
 squel.cls.DefaultQueryBuilderOptions.nameQuoteCharacter = '"'
 squel.cls.DefaultQueryBuilderOptions.separator = '\n'
@@ -1831,7 +1834,7 @@ var execute_bulk = function (self, bulk, callback) {
   var sql_query = to_sql_multi_condition_update(bulk)
   console.log('execute_bulk - bulk = ', JSON.stringify(bulk.model.getTableName()) + ', updates.length = ', bulk.updates.length)
   console.time('execute_bulk - ' + bulk.model.getTableName())
-  self.sequelize.query(sql_query)
+  self.sequelize.query(sql_query, {logging: console.log, benchmark: true})
     .then(function () { 
       console.timeEnd('execute_bulk - ' + bulk.model.getTableName())
       return callback() 
@@ -1840,6 +1843,66 @@ var execute_bulk = function (self, bulk, callback) {
 }
 
 var to_sql_multi_condition_update = function (bulk) {
+  // console.log('to_sql_multi_condition_update - bulk = ', JSON.stringify(bulk))
+  var sql_query = ''
+  var model = bulk.model
+  var table_name = model.getTableName()
+  var updates = bulk.updates
+  var update_rows = []
+  var attributes_to_set = {}
+  var all_attributes
+  var all_columns
+
+  // console.log('to_sql_multi_condition_update - conditions = ', JSON.stringify(conditions))
+  updates.forEach(function (update) {
+    update_rows.push(_.assign({}, update.set, update.where))
+    Object.keys(update.set).forEach(function (attribute) {
+      attributes_to_set[attribute] = attributes_to_set[attribute] || []
+      attributes_to_set[attribute].push({
+        value: update.set[attribute],
+        conditions: update.where
+      })
+    })
+  })
+
+  all_attributes = Object.keys(update_rows[0]) // assuming all updates are updating same attributes
+  all_columns = all_attributes.map(to_sql_column)
+  var writer = csvWriter({headers: all_columns})
+  writer.pipe(fs.createWriteStream(table_name + '.csv'))
+  update_rows.forEach(function (update_row) {
+    var array = all_attributes.map(function (attribute) { return update_row[attribute] })
+    // console.log('array = ', JSON.stringify(array))
+    writer.write(array)
+  })
+  writer.end()
+  var file_name = path.join(__dirname, table_name + '.csv')
+
+  sql_query += 'CREATE TEMPORARY TABLE temp_' + table_name + '\n' +
+    '(\n' +
+  Object.keys(update_rows[0]).map(function (attribute) {
+    return '  ' + to_sql_column(attribute) + ' ' + model.rawAttributes[attribute].type
+  }).join(',\n') + '\n' +
+  ') ON COMMIT DROP;\n' +
+  'COPY temp_' + table_name + ' FROM \'' + file_name + '\';'
+  'UPDATE ' + table_name + '\n' +
+  'SET\n' +
+  Object.keys(updates[0].set).map(function (attribute_to_set) {
+    attribute_to_set = to_sql_column(attribute_to_set)
+    return attribute_to_set + ' = temp_' + table_name  + '.' + attribute_to_set
+  }).join(', ') + '\n' +
+  'FROM temp_' + table_name + '\n' +
+  'WHERE\n' +
+  Object.keys(updates[0].where).map(function (where_attribute) {
+    where_attribute = to_sql_column(where_attribute)
+    return table_name + '.' + where_attribute + ' = temp_' + table_name + '.' + where_attribute
+  }).join(' AND ') + ';'
+
+  // console.log('to_sql_multi_condition_update - sql_query = ', JSON.stringify(sql_query))
+
+  return sql_query
+}
+
+var to_sql_multi_condition_update1 = function (bulk) {
   // console.log('to_sql_multi_condition_update - bulk = ', JSON.stringify(bulk))
   var sql_query = ''
   var model = bulk.model
