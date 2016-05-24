@@ -725,45 +725,100 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       if (transactions_datas.length === 1) {
         console.log('Fixing ' + transactions_datas[0].txid)
       }
-      var inputs_bulk = []
-      var outputs_bulk = []
-      var transactions_bulk = []
-      var close_transactions_bulk = []
       console.time('fix_transactions')
       console.time('fix_transactions - each')
+      var bulk_outputs_ids = []
+      var bulk_inputs = []
+      var bulk_transactions = []
       async.each(transactions_datas, function (transaction_data, cb) {
         transaction_data = transaction_data.toJSON()
-        self.fix_transaction(transaction_data, inputs_bulk, outputs_bulk, transactions_bulk, function (err, all_fixed) {
+        self.fix_transaction(transaction_data, bulk_outputs_ids, bulk_inputs, bulk_transactions, function (err, all_fixed) {
           if (err) return cb(err)
-          if (!all_fixed) return cb()
-          close_transactions_bulk.push({
-            set: {iosparsed: all_fixed, fee: transaction_data.fee || 0, totalsent: transaction_data.totalsent || 0},
-            where: {txid: transaction_data.txid}
-          })
+          // console.time('fix_transactions - fix bulk')
           if (!transaction_data.colored && all_fixed) {
             emits.push(['newtransaction', transaction_data])
           }
           cb()
         })
-      }, 
+      },
       function (err) {
         if (err) return callback(err)
         console.timeEnd('fix_transactions - each')
-        console.time('fix_transactions - fix bulk')
-        inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
-        outputs_bulk = {table_name: 'outputs', updates: outputs_bulk}
-        transactions_bulk = {table_name: 'transactions', updates: transactions_bulk}
-        close_transactions_bulk = {table_name: 'transactions', updates: close_transactions_bulk}
-        execute_bulks_parallel(self, [inputs_bulk, outputs_bulk, transactions_bulk], function (err) {
-          console.timeEnd('fix_transactions - fix bulk')
+        var outputs_query
+        var inputs_query
+        var transactions_query
+        console.log('fix_transactions - outputs.length = ', bulk_outputs_ids.length)
+        console.log('fix_transactions - inputs.length = ', bulk_inputs.length)
+        console.log('fix_transactions - transactions.length = ', transactions_datas.length)
+
+        if (bulk_outputs_ids.length) {
+          var outputs_conditions = bulk_outputs_ids.map(function (output_id) {
+            return '(outputs.id = ' + output_id + ')'
+          }).join(' OR ')
+
+          outputs_query = '' +
+            'UPDATE\n' +
+            '  outputs\n' +
+            'SET\n' +
+            '  "usedTxid" = inputs.input_txid,\n' +
+            '  "usedBlockheight" = transactions.blockheight,\n' +
+            '  used = TRUE\n' +
+            'FROM\n' +
+            '  inputs\n' +
+            'JOIN transactions ON transactions.txid = inputs.txid\n' + 
+            'WHERE\n' +
+            '  (inputs.txid = outputs.txid AND inputs.vout = outputs.n) AND (' + outputs_conditions + ')'
+        }
+
+        if (bulk_inputs.length) {
+          var inputs_conditions = bulk_inputs.map(function (input) {
+            return '(inputs.txid = ' + to_sql_value(input.txid) + ' AND inputs.vout = ' + input.vout + ')'
+          }).join(' OR ')
+
+          inputs_query = '' + 
+            'UPDATE\n' +
+            '  inputs\n' +
+            'SET\n' +
+            '  output_id = outputs.id,\n' +
+            '  value = outputs.value,\n' +
+            '  fixed = TRUE\n' +
+            'FROM\n' +
+            '  outputs\n' +
+            'WHERE\n' +
+            '  (inputs.txid = outputs.txid AND inputs.vout = outputs.n) AND (' + inputs_conditions + ')'
+        }
+
+        transactions_query = to_sql_multi_condition_update({table_name: 'transactions', updates: bulk_transactions})
+
+        console.time('fix_transactions - parallel')
+        async.parallel([
+          function (cb) {
+            if (!bulk_outputs_ids.length) return cb()
+            console.time('fix_transactions - outputs')
+            self.sequelize.query(outputs_query).then(function () {
+              console.timeEnd('fix_transactions - outputs')
+              cb()
+            }).catch(cb)
+          },
+          function (cb) {
+            if (!bulk_inputs.length) return cb()
+            console.time('fix_transactions - inputs')
+            self.sequelize.query(inputs_query).then(function () {
+              console.timeEnd('fix_transactions - inputs')
+              cb()
+            }).catch(cb)
+          }
+        ], 
+        function (err) {
           if (err) return callback(err)
-          console.time('fix_transactions - fix close_transactions_bulk')
-          execute_bulk(self, close_transactions_bulk, function (err) {
-            console.timeEnd('fix_transactions - fix close_transactions_bulk')
+          console.time('fix_transactions - transactions')
+          self.sequelize.query(transactions_query).then(function () {
+            console.timeEnd('fix_transactions - transactions')
+            console.timeEnd('fix_transactions - parallel')
             console.timeEnd('fix_transactions')
-            if (err) return callback(err)
+            console.warn('fix_transactions over')
             close_blocks()
-          })
+          }).catch(callback)
         })
       })
     })
@@ -979,7 +1034,7 @@ Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_
   query = query.join('\n')
   this.sequelize.query(query, {type: this.sequelize.QueryTypes.SELECT})
     .then(function (transactions) {
-      console.warn('get_need_to_cc_parse_transactions_by_blocks - transactions.length = ', transactions.length)
+      console.log('get_need_to_cc_parse_transactions_by_blocks - transactions.length = ', transactions.length)
       callback(null, transactions)
     })
     .catch(function (e) {
@@ -1016,18 +1071,24 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
   })
 }
 
-Scanner.prototype.fix_transaction = function (raw_transaction_data, inputs_bulk, outputs_bulk, transactions_bulk, callback) {
-  this.fix_vin(raw_transaction_data, raw_transaction_data.blockheight, inputs_bulk, outputs_bulk, function (err, all_fixed) {
+Scanner.prototype.fix_transaction = function (raw_transaction_data, bulk_outputs_ids, bulk_inputs, bulk_transactions, callback) {
+  this.fix_vin(raw_transaction_data, raw_transaction_data.blockheight, bulk_outputs_ids, bulk_inputs, function (err, all_fixed) {
     if (err) return callback(err)
-    transactions_bulk.push({
-      set: {tries: raw_transaction_data.tries || 0},
+    raw_transaction_data.iosparsed = all_fixed
+    bulk_transactions.push({
+      set: {
+        tries: raw_transaction_data.tries || 0,
+        totalsent: raw_transaction_data.totalsent || 0,
+        fee: raw_transaction_data.fee || 0,
+        iosparsed: raw_transaction_data.iosparsed
+      },
       where: {txid: raw_transaction_data.txid},
     })
     callback(null, all_fixed)
   })
 }
 
-Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_bulk, outputs_bulk, include_asstes, callback) {
+Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_outputs_ids, bulk_inputs, include_asstes, callback) {
   // fixing a transaction - we need to fulfill the condition where a transaction is iosparsed if and only if
   // all of its inputs are fixed. 
   // An input is fixed when it is assigned with the output_id of its associated output, and the output is marked as used.
@@ -1058,13 +1119,10 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
           input.output_id = output.id
           input.assets = output.assets
           inputs_to_fix_now.push(input)
+          bulk_inputs.push({txid: input.txid, vout: input.vout})
+          bulk_outputs_ids.push(input.output_id)
         }
       })
-    })
-
-    inputs_to_fix_now.forEach(function (input) {
-      self.fix_input(input, inputs_bulk)
-      self.fix_used_output(input.output_id, raw_transaction_data.txid, blockheight, outputs_bulk)
     })
 
     var all_fixed = (inputs_to_fix_now.length === Object.keys(inputs_to_fix).length)
@@ -1112,28 +1170,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
       '  transactions.txid,\n' +
       '  to_json(array(\n' +
       '    SELECT\n' +
-      '      vin\n' +
-      '    FROM\n' +
-      '      (SELECT\n' +
-      '       to_json(array(\n' +
-      '          SELECT\n' +
-      '            assets\n' +
-      '          FROM\n' +
-      '            (SELECT\n' +
-      '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
-      '              assets.*\n' +
-      '            FROM\n' +
-      '              assetsoutputs\n' +
-      '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
-      '            WHERE assetsoutputs.output_id = inputs.output_id ORDER BY index_in_output)\n' +
-      '        AS assets)) AS assets\n' +
-      '      FROM\n' +
-      '        inputs\n' +
-      '      WHERE\n' +
-      '        inputs.input_txid = transactions.txid\n' +
-      '      ORDER BY input_index) AS vin)) AS vin,\n' +
-      '  to_json(array(\n' +
-      '    SELECT\n' +
       '      vout\n' +
       '    FROM\n' +
       '      (SELECT\n' +
@@ -1154,7 +1190,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
       '      ORDER BY n) AS vout)) AS vout\n' +
       'FROM\n' +
       '  transactions\n' +
-      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + ';'
+      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND (' + outputs_conditions + ');'
   } else {
     find_vin_transactions_query = '' +
       'SELECT\n' +
@@ -1164,10 +1200,10 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
       '  outputs.value\n' +
       'FROM transactions\n' +
       'JOIN outputs on outputs.txid = transactions.txid\n' +
-      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + ';'
+      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND (' + outputs_conditions + ');'
   }
   // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
-  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT, logging: console.log, benchmark: true})
+  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
     .then(function (vin_transactions) {
       // console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
       if (!include_asstes) {
@@ -1181,20 +1217,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
       end(vin_transactions)
     })
     .catch(callback)
-}
-
-Scanner.prototype.fix_input = function (input, inputs_bulk) {
-  inputs_bulk.push({
-    set: {output_id: input.output_id, value: input.value, fixed: true},
-    where: {input_txid: input.input_txid, input_index: input.input_index}
-  })
-}
-
-Scanner.prototype.fix_used_output = function (output_id, usedTxid, usedBlockheight, outputs_bulk) {
-  outputs_bulk.push({
-    set: {used: true, usedTxid: usedTxid, usedBlockheight: usedBlockheight},
-    where: {id: output_id}
-  })
 }
 
 var calc_fee = function (raw_transaction_data) {
@@ -1363,19 +1385,48 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         cb(null, true)
       } else {
         did_work = true
-        var inputs_bulk = []
-        var outputs_bulk = []
         console.log('parse_new_mempool_transaction - #3.2 fix_vin')
-        self.fix_vin(raw_transaction_data, blockheight, inputs_bulk, outputs_bulk, true, function (err, all_fixed) {
+        var bulk_outputs_ids = []
+        var bulk_inputs = []
+        self.fix_vin(raw_transaction_data, blockheight, bulk_outputs_ids, bulk_inputs, true, function (err, all_fixed) {
           if (err) return cb(err)
-          if (inputs_bulk.length) {
-            inputs_bulk = {table_name: 'inputs', updates: inputs_bulk}
-            sql_query.push(to_sql_multi_condition_update(inputs_bulk))
+          if (bulk_outputs_ids.length) {
+            var outputs_conditions = bulk_outputs_ids.map(function (output_id) {
+              return '(outputs.id = ' + output_id + ')'
+            }).join(' OR ')
+
+            sql_query.push(
+              'UPDATE\n' +
+              '  outputs\n' +
+              'SET\n' +
+              '  "usedTxid" = inputs.input_txid,\n' +
+              '  "usedBlockheight" = transactions.blockheight,\n' +
+              '  used = TRUE\n' +
+              'FROM\n' +
+              '  inputs\n' +
+              'JOIN transactions ON transactions.txid = inputs.txid\n' + 
+              'WHERE\n' +
+              '  (inputs.txid = outputs.txid AND inputs.vout = outputs.n) AND (' + outputs_conditions + ')')
           }
-          if (outputs_bulk.length) {
-            outputs_bulk = {table_name: 'outputs', updates: outputs_bulk}
-            sql_query.push(to_sql_multi_condition_update(outputs_bulk))
+
+          if (bulk_inputs.length) {
+            var inputs_conditions = bulk_inputs.map(function (input) {
+              return '(inputs.txid = ' + to_sql_value(input.txid) + ' AND inputs.vout = ' + input.vout + ')'
+            }).join(' OR ')
+
+            sql_query.push( 
+              'UPDATE\n' +
+              '  inputs\n' +
+              'SET\n' +
+              '  output_id = outputs.id,\n' +
+              '  value = outputs.value,\n' +
+              '  fixed = TRUE\n' +
+              'FROM\n' +
+              '  outputs\n' +
+              'WHERE\n' +
+              '  (inputs.txid = outputs.txid AND inputs.vout = outputs.n) AND (' + inputs_conditions + ')')
           }
+          if (bulk)
           cb(null, all_fixed)
         })
       }
