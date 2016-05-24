@@ -765,7 +765,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
             '  used = TRUE\n' +
             'FROM\n' +
             '  inputs\n' +
-            'JOIN transactions ON transactions.txid = inputs.txid\n' + 
+            'JOIN transactions ON transactions.txid = inputs.input_txid\n' + 
             'WHERE\n' +
             '  (inputs.txid = outputs.txid AND inputs.vout = outputs.n) AND (' + outputs_conditions + ')'
         }
@@ -1404,7 +1404,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
               '  used = TRUE\n' +
               'FROM\n' +
               '  inputs\n' +
-              'JOIN transactions ON transactions.txid = inputs.txid\n' + 
+              'JOIN transactions ON transactions.txid = inputs.input_txid\n' + 
               'WHERE\n' +
               '  (inputs.txid = outputs.txid AND inputs.vout = outputs.n) AND (' + outputs_conditions + ')')
           }
