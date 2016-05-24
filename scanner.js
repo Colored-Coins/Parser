@@ -1036,7 +1036,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
 
   var self = this
   var coinbase = false
-  var inputsToFix = {}
+  var inputs_to_fix = {}
 
   if (typeof include_asstes === 'function') {
     callback = include_asstes
@@ -1048,26 +1048,26 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
   }
 
   var end = function (in_transactions) {
-    var inputsToFixNow = []
+    var inputs_to_fix_now = []
     in_transactions.forEach(function (in_transaction) {
       in_transaction.vout.forEach(function (output) {
         var input
-        if (in_transaction.txid + ':' + output.n in inputsToFix) {
-          input = inputsToFix[in_transaction.txid + ':' + output.n]
+        if (in_transaction.txid + ':' + output.n in inputs_to_fix) {
+          input = inputs_to_fix[in_transaction.txid + ':' + output.n]
           input.value = output.value
           input.output_id = output.id
           input.assets = output.assets
-          inputsToFixNow.push(input)
+          inputs_to_fix_now.push(input)
         }
       })
     })
 
-    inputsToFixNow.forEach(function (input) {
+    inputs_to_fix_now.forEach(function (input) {
       self.fix_input(input, inputs_bulk)
       self.fix_used_output(input.output_id, raw_transaction_data.txid, blockheight, outputs_bulk)
     })
 
-    var all_fixed = (inputsToFixNow.length === Object.keys(inputsToFix).length)
+    var all_fixed = (inputs_to_fix_now.length === Object.keys(inputs_to_fix).length)
     if (all_fixed) {
       calc_fee(raw_transaction_data)
       if (raw_transaction_data.fee < 0) {
@@ -1080,19 +1080,17 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
       raw_transaction_data.tries = raw_transaction_data.tries || 0
       raw_transaction_data.tries++
       if (raw_transaction_data.tries > 1000) {
-        console.warn('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(inputsToFix), ') for over than 1000 tries.')
+        console.warn('transaction', raw_transaction_data.txid, 'has un parsed inputs (', Object.keys(inputs_to_fix), ') for over than 1000 tries.')
       }
     }
     callback(null, all_fixed)
   }
 
-  var txids = {}
   raw_transaction_data.vin.forEach(function (vin) {
     if (vin.coinbase) {
       coinbase = true
     } else {
-      inputsToFix[vin.txid + ':' + vin.vout] = vin
-      txids[vin.txid] = true
+      inputs_to_fix[vin.txid + ':' + vin.vout] = vin
     }
   })
 
@@ -1101,6 +1099,12 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
   }
 
   var find_vin_transactions_query
+  var outputs_conditions = Object.keys(inputs_to_fix).map(function (txid_index) {
+    txid_index = txid_index.split(':')
+    var txid = txid_index[0]
+    var n = txid_index[1]
+    return '(outputs.txid = ' + to_sql_value(txid) + ' AND outputs.n = ' + n + ')'
+  }).join(' OR ')
 
   if (include_asstes) {
     find_vin_transactions_query = '' +
@@ -1150,7 +1154,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
       '      ORDER BY n) AS vout)) AS vout\n' +
       'FROM\n' +
       '  transactions\n' +
-      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND (transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ');'
+      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + ';'
   } else {
     find_vin_transactions_query = '' +
       'SELECT\n' +
@@ -1160,7 +1164,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, inputs_
       '  outputs.value\n' +
       'FROM transactions\n' +
       'JOIN outputs on outputs.txid = transactions.txid\n' +
-      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND (transactions.txid IN ' + to_sql_values(Object.keys(txids)) + ');'
+      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + ';'
   }
   // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
   self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT, logging: console.log, benchmark: true})
