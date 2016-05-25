@@ -545,7 +545,7 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
   sql_query.unshift(squel.insert()
     .into('transactions')
     .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations']}))
-    .toString() + ' on conflict (txid) do update set ' + to_sql_update_string(update))
+    .toString() + ' ON CONFLICT (txid) DO UPDATE SET ' + to_sql_update_string(update))
 
   return out
 }
@@ -575,7 +575,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, sql_
     sql_query.push(squel.insert()
       .into('inputs')
       .setFields(to_sql_fields(vin))
-      .toString() + ' on conflict (input_txid, input_index) do nothing')
+      .toString() + ' ON CONFLICT (input_txid, input_index) DO NOTHING')
   })
 }
 
@@ -616,7 +616,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
     sql_query.push(squel.insert()
       .into('outputs')
       .setFields(to_sql_fields(new_utxo))
-      .toString() + ' on conflict (txid, n) do nothing')
+      .toString() + ' ON CONFLICT (txid, n) DO NOTHING')
 
     if (vout.scriptPubKey && vout.scriptPubKey.addresses) {
       vout.scriptPubKey.addresses.forEach(function (address) {
@@ -626,7 +626,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
           .set('address', address)
           .set('output_id',
             squel.select().field('id').from('outputs').where('txid = ? AND n = ?', new_utxo.txid, new_utxo.n))
-          .toString() + ' on conflict (address, output_id) do nothing')
+          .toString() + ' ON CONFLICT (address, output_id) DO NOTHING')
       })
     }
   })
@@ -637,7 +637,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
       .into('addressestransactions')
       .set('address', address)
       .set('txid', raw_transaction_data.txid)
-      .toString() + ' on conflict (address, txid) do nothing')    
+      .toString() + ' ON CONFLICT (address, txid) DO NOTHING')    
   })
 
   return out
@@ -772,7 +772,10 @@ Scanner.prototype.fix_blocks = function (err, callback) {
           }
         ], 
         function (err) {
-          if (err) return callback(err)
+          if (err) {
+            console.log('fix_transactions - err = ', JSON.stringify(err))
+            return callback(err)
+          }
           console.time('fix_transactions - transactions')
           self.sequelize.query(transactions_query).then(function () {
             console.timeEnd('fix_transactions - transactions')
@@ -981,14 +984,14 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
           .set('lockStatus', asset.lockStatus)
           .set('divisibility', asset.divisibility)
           .set('aggregationPolicy', asset.aggregationPolicy)
-          .toString() + ' on conflict ("assetId") do nothing')
+          .toString() + ' ON CONFLICT ("assetId") DO NOTHING')
       }
       sql_query.push(squel.insert()
         .into('assetstransactions')
         .set('assetId', asset.assetId)
         .set('txid', transaction_data.txid)
         .set('type', type)
-        .toString() + ' on conflict ("assetId", txid) do nothing')
+        .toString() + ' ON CONFLICT ("assetId", txid) DO NOTHING')
       sql_query.push(squel.insert()
         .into('assetsoutputs')
         .set('assetId', asset.assetId)
@@ -997,14 +1000,14 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
         .set('output_id', transaction_data.vout[out_index].id ||
           squel.select().field('id').from('outputs').where('txid = ? AND n = ?', transaction_data.txid, out_index))  // if no id (such as in the mempool case), go and fetch it
         .set('index_in_output', index_in_output)
-        .toString() + ' on conflict ("assetId", output_id, index_in_output) do nothing')
+        .toString() + ' ON CONFLICT ("assetId", output_id, index_in_output) DO NOTHING')
       if (asset.amount && transaction_data.vout[out_index].scriptPubKey && transaction_data.vout[out_index].scriptPubKey.addresses) {
         transaction_data.vout[out_index].scriptPubKey.addresses.forEach(function (address) {
           sql_query.push(squel.insert()
             .into('assetsaddresses')
             .set('assetId', asset.assetId)
             .set('address', address)
-            .toString() + ' on conflict ("assetId", address) do nothing')
+            .toString() + ' ON CONFLICT ("assetId", address) DO NOTHING')
         })
       }
     })
@@ -1430,7 +1433,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
           sql_query.unshift(squel.insert()
             .into('transactions')
             .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations', 'index_in_block']}))
-            .toString() + ' on conflict (txid) do update set ' + to_sql_update_string({iosparsed: raw_transaction_data.iosparsed, ccparsed: raw_transaction_data.ccparsed}))
+            .toString() + ' ON CONFLICT (txid) DO UPDATE SET ' + to_sql_update_string({iosparsed: raw_transaction_data.iosparsed, ccparsed: raw_transaction_data.ccparsed}))
         }
         cb()
       }
@@ -1949,7 +1952,7 @@ var to_sql_value = function (value) {
   return (typeof value === 'string') ? ('\'' + value + '\'') : value
 }
 
-var to_sql_columns = function (model, options) {
+var to_sql_columns_of_model = function (model, options) {
   var columns = []
   var table_name = model.getTableName()
   Object.keys(model.attributes).forEach(function (attribute) {
@@ -1960,14 +1963,18 @@ var to_sql_columns = function (model, options) {
   return columns.join(', ')
 }
 
+var to_sql_columns = function (attributes) {
+  return attributes.map(to_sql_column).join(', ')
+}
+
 var to_sql_column = function (attribute) {
   return '"' + attribute + '"'
 }
 
 var to_sql_update_string = function (obj) {
-  var keys = Object.keys(obj).map(to_sql_column).join(', ')
-  var values = Object.keys(obj).map(function (key) { return to_sql_value(obj[key]) }).join(', ')
-  return '(' + keys + ') = (' + values + ')'
+  var columns = to_sql_columns(Object.keys(obj))
+  var values = to_sql_values(_.values(obj))
+  return '(' + columns + ') = ' + values
 }
 
 module.exports = Scanner
