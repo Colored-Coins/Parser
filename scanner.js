@@ -832,10 +832,10 @@ var get_fix_transactions_update_query = function (bulk_outputs_ids, bulk_inputs,
   var transactions_updates = transactions.map(function (transaction) {
     var set = {}
     if (transaction.iosparsed) {
-      set.tries = transaction.tries
+      set.tries = transaction.tries || 0
     } else {
-      set.fee = transaction.fee
-      set.totalsent = transaction.totalsent
+      set.fee = transaction.fee || 0
+      set.totalsent = transaction.totalsent || 0
       set.iosparsed = true
     }
     return {
