@@ -811,6 +811,7 @@ var get_fix_transactions_update_query = function (bulk_outputs_ids, bulk_inputs,
   }
 
   if (bulk_inputs.length) {
+    bulk_inputs.push({txid: 'ffff', vout: -1})  // ugly hack - postgres query planner mistakenly doing seq scan when all 'vout' are the same
     var inputs_conditions = bulk_inputs.map(function (input) {
       return '(inputs.txid = ' + sql_builder.to_value(input.txid) + ' AND inputs.vout = ' + input.vout + ')'
     }).join(' OR ')
