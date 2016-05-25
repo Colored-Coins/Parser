@@ -764,7 +764,6 @@ Scanner.prototype.fix_blocks = function (err, callback) {
             }).catch(cb)
           },
           function (cb) {
-            console.log('inputs_query = ', inputs_query)
             if (!bulk_inputs.length) return cb()
             console.time('fix_transactions - inputs')
             self.sequelize.query(inputs_query).then(function () {
@@ -973,6 +972,7 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
       return
     }
 
+    transaction_data.vout[out_index].assets = assetsArray
     assetsArray.forEach(function (asset, index_in_output) {
       var type = null
       if (transaction_data.ccdata && transaction_data.ccdata.length && transaction_data.ccdata[0].type) {
