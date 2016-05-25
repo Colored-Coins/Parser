@@ -748,9 +748,9 @@ Scanner.prototype.fix_blocks = function (err, callback) {
         console.log('fix_transactions - outputs.length = ', bulk_outputs_ids.length)
         console.log('fix_transactions - inputs.length = ', bulk_inputs.length)
         console.log('fix_transactions - transactions.length = ', transactions_datas.length)
-        var queries = get_fix_transactions_update_query(bulk_outputs_ids, bulk_inputs, transactions_datas)
-        var outputs_query = queries.outputs_query
-        var inputs_query = queries.inputs_query
+        var queries = get_fix_transactions_update_queries(bulk_outputs_ids, bulk_inputs, transactions_datas)
+        var outputs_queries = queries.outputs_queries
+        var inputs_queries = queries.inputs_queries
         var transactions_query = queries.transactions_query
 
         console.time('fix_transactions - parallel')
@@ -758,18 +758,22 @@ Scanner.prototype.fix_blocks = function (err, callback) {
           function (cb) {
             if (!bulk_outputs_ids.length) return cb()
             console.time('fix_transactions - outputs')
-            self.sequelize.query(outputs_query).then(function () {
-              console.timeEnd('fix_transactions - outputs')
-              cb()
-            }).catch(cb)
+            async.each(outputs_queries, function (outputs_query, cb) {
+              self.sequelize.query(outputs_query).then(function () {
+                console.timeEnd('fix_transactions - outputs')
+                cb()
+              }).catch(cb)
+            }, cb)
           },
           function (cb) {
             if (!bulk_inputs.length) return cb()
             console.time('fix_transactions - inputs')
-            self.sequelize.query(inputs_query).then(function () {
-              console.timeEnd('fix_transactions - inputs')
-              cb()
-            }).catch(cb)
+            async.each(inputs_queries, function (inputs_query, cb) {
+              self.sequelize.query(inputs_query).then(function () {
+                console.timeEnd('fix_transactions - inputs')
+                cb()
+              }).catch(cb)
+            }, cb)
           }
         ], 
         function (err) {
@@ -790,42 +794,49 @@ Scanner.prototype.fix_blocks = function (err, callback) {
   })
 }
 
-var get_fix_transactions_update_query = function (bulk_outputs_ids, bulk_inputs, transactions) {
+var get_fix_transactions_update_queries = function (bulk_outputs_ids, bulk_inputs, transactions) {
   var ans = {}
-
+  var i
   if (bulk_outputs_ids.length) {
-    var outputs_conditions = 'outputs.id IN ' + sql_builder.to_values(bulk_outputs_ids)
-
-    ans.outputs_query = '' +
-      'UPDATE\n' +
-      '  outputs\n' +
-      'SET\n' +
-      '  "usedTxid" = inputs.input_txid,\n' +
-      '  "usedBlockheight" = transactions.blockheight,\n' +
-      '  used = TRUE\n' +
-      'FROM\n' +
-      '  inputs\n' +
-      'JOIN transactions ON transactions.txid = inputs.input_txid\n' + 
-      'WHERE\n' +
-      '  (inputs.txid = outputs.txid AND inputs.vout = outputs.n) AND (' + outputs_conditions + ')'
+    ans.outputs_queries = []
+    for (i = 0 ; i < bulk_outputs_ids.length ; i += 200) {
+      console.log('outputs slice ' + i + ' - ' + (i + 200))
+      var outputs_conditions = 'outputs.id IN ' + sql_builder.to_values(bulk_outputs_ids.slice(i, i + 200))
+      ans.outputs_queries.push('' +
+        'UPDATE\n' +
+        '  outputs\n' +
+        'SET\n' +
+        '  "usedTxid" = inputs.input_txid,\n' +
+        '  "usedBlockheight" = transactions.blockheight,\n' +
+        '  used = TRUE\n' +
+        'FROM\n' +
+        '  inputs\n' +
+        'JOIN transactions ON transactions.txid = inputs.input_txid\n' + 
+        'WHERE\n' +
+        '  (inputs.txid = outputs.txid AND inputs.vout = outputs.n) AND (' + outputs_conditions + ')')
+    }
   }
 
   if (bulk_inputs.length) {
-    var inputs_conditions = bulk_inputs.map(function (input) {
-      return '(inputs.txid = ' + sql_builder.to_value(input.txid) + ' AND inputs.vout = ' + input.vout + ')'
-    }).join(' OR ')
+    ans.inputs_queries = []
+    for (i = 0 ; i < bulk_inputs.length; i += 200) {
+      console.log('inputs slice ' + i + ' - ' + (i + 200))
+      var inputs_conditions = bulk_inputs.slice(i, i + 200).map(function (input) {
+        return '(inputs.txid = ' + sql_builder.to_value(input.txid) + ' AND inputs.vout = ' + input.vout + ')'
+      }).join(' OR ')
 
-    ans.inputs_query = '' + 
-      'UPDATE\n' +
-      '  inputs\n' +
-      'SET\n' +
-      '  output_id = outputs.id,\n' +
-      '  value = outputs.value,\n' +
-      '  fixed = TRUE\n' +
-      'FROM\n' +
-      '  outputs\n' +
-      'WHERE\n' +
-      '  (inputs.txid = outputs.txid AND inputs.vout = outputs.n) AND (' + inputs_conditions + ')'
+      ans.inputs_queries.push('' + 
+        'UPDATE\n' +
+        '  inputs\n' +
+        'SET\n' +
+        '  output_id = outputs.id,\n' +
+        '  value = outputs.value,\n' +
+        '  fixed = TRUE\n' +
+        'FROM\n' +
+        '  outputs\n' +
+        'WHERE\n' +
+        '  (inputs.txid = outputs.txid AND inputs.vout = outputs.n) AND (' + inputs_conditions + ')')
+    }
   }
 
   if (!transactions || !transactions.length) {
@@ -1405,9 +1416,9 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         self.fix_vin(raw_transaction_data, blockheight, bulk_outputs_ids, bulk_inputs, true, function (err) {
           if (err) return cb(err)
           console.timeEnd('parse_new_mempool_transaction - fix_vin ' + raw_transaction_data.txid)
-          var queries = get_fix_transactions_update_query(bulk_outputs_ids, bulk_inputs)
-          sql_query.push(queries.outputs_query)
-          sql_query.push(queries.inputs_query)
+          var queries = get_fix_transactions_update_queries(bulk_outputs_ids, bulk_inputs)
+          sql_query.concat(queries.outputs_queries)
+          sql_query.concat(queries.inputs_queries)
           cb()
         })
       }
