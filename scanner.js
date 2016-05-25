@@ -760,28 +760,20 @@ Scanner.prototype.fix_blocks = function (err, callback) {
             console.time('fix_transactions - outputs')
             async.each(outputs_queries, function (outputs_query, cb) {
               self.sequelize.query(outputs_query).then(function () {
+                console.timeEnd('fix_transactions - outputs')
                 cb()
               }).catch(cb)
-            },
-            function (err) {
-              if (err) return cb(err)
-              console.timeEnd('fix_transactions - outputs')
-              cb()
-            })
+            }, cb)
           },
           function (cb) {
             if (!bulk_inputs.length) return cb()
             console.time('fix_transactions - inputs')
             async.each(inputs_queries, function (inputs_query, cb) {
               self.sequelize.query(inputs_query).then(function () {
+                console.timeEnd('fix_transactions - inputs')
                 cb()
               }).catch(cb)
-            }, 
-            function (err) {
-              if (err) return cb()
-              console.timeEnd('fix_transactions - inputs')
-              cb()
-            })
+            }, cb)
           }
         ], 
         function (err) {
