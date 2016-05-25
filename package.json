@@ -15,7 +15,11 @@
     },
     {
       "name": "bejavu",
-      "email": "tal@colu.co"
+      "email": "tal@colu.com"
+    },
+    {
+      "name": "Oded Leiba",
+      "email": "odedleiba5@gmail.com"
     }
   ],
   "license": "MIT",
@@ -29,6 +33,7 @@
     "lodash": "^4.11.1",
     "mongoose": "~4.4.3",
     "sequelize": "^3.19.3",
-    "squel": "^5.0.3"
+    "squel": "^5.0.3",
+    "nodejs-sql": "git+https://github.com/oleiba/nodejs-sql.git"
   }
 }

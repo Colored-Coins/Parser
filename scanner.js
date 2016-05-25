@@ -6,6 +6,7 @@ var CCTransaction = require('cc-transaction')
 var bitcoin = require('bitcoin-async')
 var get_assets_outputs = require('cc-get-assets-outputs')
 var squel = require('squel').useFlavour('postgres')
+var sql_builder = require('nodejs-sql')
 var csvWriter = require('csv-write-stream')
 var fs = require('fs')
 var path = require('path')
@@ -545,7 +546,7 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
   sql_query.unshift(squel.insert()
     .into('transactions')
     .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations']}))
-    .toString() + ' ON CONFLICT (txid) DO UPDATE SET ' + to_sql_update_string(update))
+    .toString() + ' ON CONFLICT (txid) DO UPDATE SET ' + sql_builder.to_update_string(update))
 
   return out
 }
@@ -763,6 +764,8 @@ Scanner.prototype.fix_blocks = function (err, callback) {
             }).catch(cb)
           },
           function (cb) {
+            console.log('bulk_inputs = ', JSON.stringify(bulk_inputs))
+            console.log('inputs_query = ', inputs_query)
             if (!bulk_inputs.length) return cb()
             console.time('fix_transactions - inputs')
             self.sequelize.query(inputs_query).then(function () {
@@ -781,7 +784,6 @@ Scanner.prototype.fix_blocks = function (err, callback) {
             console.timeEnd('fix_transactions - transactions')
             console.timeEnd('fix_transactions - parallel')
             console.timeEnd('fix_transactions')
-            console.warn('fix_transactions over')
             close_blocks()
           }).catch(callback)
         })
@@ -794,7 +796,7 @@ var get_fix_transactions_update_query = function (bulk_outputs_ids, bulk_inputs,
   var ans = {}
 
   if (bulk_outputs_ids.length) {
-    var outputs_conditions = 'outputs.id IN ' + to_sql_values(bulk_outputs_ids)
+    var outputs_conditions = 'outputs.id IN ' + sql_builder.to_values(bulk_outputs_ids)
 
     ans.outputs_query = '' +
       'UPDATE\n' +
@@ -812,7 +814,7 @@ var get_fix_transactions_update_query = function (bulk_outputs_ids, bulk_inputs,
 
   if (bulk_inputs.length) {
     var inputs_conditions = bulk_inputs.map(function (input) {
-      return '(inputs.txid = ' + to_sql_value(input.txid) + ' AND inputs.vout = ' + input.vout + ')'
+      return '(inputs.txid = ' + sql_builder.to_value(input.txid) + ' AND inputs.vout = ' + input.vout + ')'
     }).join(' OR ')
 
     ans.inputs_query = '' + 
@@ -846,7 +848,7 @@ var get_fix_transactions_update_query = function (bulk_outputs_ids, bulk_inputs,
       where: {txid: transaction.txid}
     }
   })
-  ans.transactions_query = to_sql_multi_condition_update({table_name: 'transactions', updates: transactions_updates})
+  ans.transactions_query = sql_builder.to_multi_condition_update({table_name: 'transactions', updates: transactions_updates})
 
   return ans
 }
@@ -1172,11 +1174,11 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
     txid_index = txid_index.split(':')
     var txid = txid_index[0]
     var n = txid_index[1]
-    return '(outputs.txid = ' + to_sql_value(txid) + ' AND outputs.n = ' + n + ')'
+    return '(outputs.txid = ' + sql_builder.to_value(txid) + ' AND outputs.n = ' + n + ')'
   }).join(' OR ') + ')'
 
   if (include_assets) {
-    var transactions_conditions = '(transactions.txid IN ' + to_sql_values(Object.keys(inputs_to_fix).map(function (txid_index) { return txid_index.split(':')[0] })) +')'
+    var transactions_conditions = '(transactions.txid IN ' + sql_builder.to_values(Object.keys(inputs_to_fix).map(function (txid_index) { return txid_index.split(':')[0] })) +')'
     find_vin_transactions_query = '' +
       'SELECT\n' +
       '  transactions.txid,\n' +
@@ -1433,7 +1435,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
           sql_query.unshift(squel.insert()
             .into('transactions')
             .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations', 'index_in_block']}))
-            .toString() + ' ON CONFLICT (txid) DO UPDATE SET ' + to_sql_update_string({iosparsed: raw_transaction_data.iosparsed, ccparsed: raw_transaction_data.ccparsed}))
+            .toString() + ' ON CONFLICT (txid) DO UPDATE SET ' + sql_builder.to_update_string({iosparsed: raw_transaction_data.iosparsed, ccparsed: raw_transaction_data.ccparsed}))
         }
         cb()
       }
@@ -1860,55 +1862,6 @@ var to_discrete = function (raw_transaction_data) {
   return raw_transaction_data
 }
 
-var to_sql_multi_condition_update = function (bulk) {
-  // console.log('to_sql_multi_condition_update - bulk = ', JSON.stringify(bulk))
-  var table_name = bulk.table_name
-  var updates = bulk.updates
-  var attributes_to_set = {}
-  var conditions = updates.map(function (update) { return update.where })
-
-  // console.log('to_sql_multi_condition_update - conditions = ', JSON.stringify(conditions))
-  updates.forEach(function (update) {
-    Object.keys(update.set).forEach(function (attribute) {
-      attributes_to_set[attribute] = attributes_to_set[attribute] || []
-      attributes_to_set[attribute].push({
-        value: update.set[attribute],
-        conditions: update.where
-      })
-    })
-  })
-  // console.log('to_sql_multi_condition_update - attributes_to_set = ', JSON.stringify(attributes_to_set))
-
-  var sql_query = 'UPDATE ' + table_name + '\n'
-  sql_query += '  SET '
-  sql_query += Object.keys(attributes_to_set).map(function (attribute) {
-    var attribute_to_set_clause = to_sql_column(attribute) + ' = CASE\n'
-    attributes_to_set[attribute].forEach(function (obj) {
-      attribute_to_set_clause += '    WHEN ' + to_sql_condition(obj.conditions) + ' THEN ' + to_sql_value(obj.value) + '\n'
-    })
-    attribute_to_set_clause += '  END'
-    return attribute_to_set_clause
-  }).join(',\n') + '\n'
-  sql_query += 'WHERE ' + to_sql_conditions(conditions)
-  // console.log('to_sql_multi_condition_update - sql_query = ', JSON.stringify(sql_query))
-  return sql_query
-}
-
-var to_sql_condition = function (where_obj) {
-  // console.log('to_sql_condition - where_obj = ', JSON.stringify(where_obj))
-  return '(' + Object.keys(where_obj).map(function (key) {
-    // console.log('to_sql_condition - where_obj[' + key + '] = ', where_obj[key])
-    var value = to_sql_value(where_obj[key])
-    // console.log('to_sql_condition - value = ', value)
-    key = to_sql_column(key)
-    return key + ' = ' + value
-  }).join(' AND ') + ')'
-}
-
-var to_sql_conditions = function (conditions) {
-  return '(' + conditions.map(to_sql_condition).join(' OR ') + ')'
-}
-
 Scanner.prototype.transmit = function (txHex, callback) {
   var self = this
   if (typeof txHex !== 'string') {
@@ -1942,39 +1895,6 @@ var to_sql_fields = function (obj, options) {
     }
   })
   return ans
-}
-
-var to_sql_values = function (values) {
-  return '(' + values.map(to_sql_value).join(', ') + ')'
-}
-
-var to_sql_value = function (value) {
-  return (typeof value === 'string') ? ('\'' + value + '\'') : value
-}
-
-var to_sql_columns_of_model = function (model, options) {
-  var columns = []
-  var table_name = model.getTableName()
-  Object.keys(model.attributes).forEach(function (attribute) {
-    if (!options || !options.exclude || options.exclude.indexOf(attribute) === -1) {
-      columns.push(table_name + '.' + to_sql_column(attribute))
-    }
-  })
-  return columns.join(', ')
-}
-
-var to_sql_columns = function (attributes) {
-  return attributes.map(to_sql_column).join(', ')
-}
-
-var to_sql_column = function (attribute) {
-  return '"' + attribute + '"'
-}
-
-var to_sql_update_string = function (obj) {
-  var columns = to_sql_columns(Object.keys(obj))
-  var values = to_sql_values(_.values(obj))
-  return '(' + columns + ') = ' + values
 }
 
 module.exports = Scanner
