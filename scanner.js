@@ -764,7 +764,6 @@ Scanner.prototype.fix_blocks = function (err, callback) {
             }).catch(cb)
           },
           function (cb) {
-            console.log('bulk_inputs = ', JSON.stringify(bulk_inputs))
             console.log('inputs_query = ', inputs_query)
             if (!bulk_inputs.length) return cb()
             console.time('fix_transactions - inputs')
@@ -813,7 +812,6 @@ var get_fix_transactions_update_query = function (bulk_outputs_ids, bulk_inputs,
   }
 
   if (bulk_inputs.length) {
-    bulk_inputs.push({txid: 'ffff', vout: -1})  // ugly hack - postgres query planner mistakenly doing seq scan when all 'vout' are the same
     var inputs_conditions = bulk_inputs.map(function (input) {
       return '(inputs.txid = ' + sql_builder.to_value(input.txid) + ' AND inputs.vout = ' + input.vout + ')'
     }).join(' OR ')
