@@ -1171,12 +1171,14 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
     return end([])
   }
 
+  inputs_to_fix['ffff:-1'] = true
   outputs_conditions = '(' + Object.keys(inputs_to_fix).slice(0, limit).map(function (txid_index) {
     txid_index = txid_index.split(':')
     var txid = txid_index[0]
     var n = txid_index[1]
     return '(outputs.txid = ' + sql_builder.to_value(txid) + ' AND outputs.n = ' + n + ')'
   }).join(' OR ') + ')'
+  delete inputs_to_fix['ffff:-1']
 
   if (include_assets) {
     var transactions_conditions = '(transactions.txid IN ' + sql_builder.to_values(Object.keys(inputs_to_fix).map(function (txid_index) { return txid_index.split(':')[0] })) +')'
