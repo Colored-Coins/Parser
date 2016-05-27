@@ -1106,7 +1106,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
   var inputs_to_fix = {}
   var outputs_conditions
   var find_vin_transactions_query
-  var limit = 5000
+  var limit = 1000
 
   if (typeof include_assets === 'function') {
     callback = include_assets
@@ -1207,8 +1207,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
       '      ORDER BY n) AS vout)) AS vout\n' +
       'FROM\n' +
       '  transactions\n' +
-      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + transactions_conditions + '\n' +
-      'LIMIT :limit;'
+      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + transactions_conditions + ';'
   } else {
     find_vin_transactions_query = '' +
       'SELECT\n' +
@@ -1218,8 +1217,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
       '  outputs.value\n' +
       'FROM transactions\n' +
       'JOIN outputs on outputs.txid = transactions.txid\n' +
-      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + '\n' +
-      'LIMIT :limit;'
+      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + ';'
   }
   // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
   self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT, replacements: {limit: limit}})
