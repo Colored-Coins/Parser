@@ -542,7 +542,7 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
     time: raw_transaction_data.time
   }
 
-  // put this query first because of outputs and inputs foreign key constraints, validate trasnaction in DB
+  // put this query first because of outputs and inputs foreign key constraints, validate transaction in DB
   sql_query.unshift(squel.insert()
     .into('transactions')
     .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations']}))
@@ -723,16 +723,13 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       if (!transactions_datas.length) {
         return close_blocks(null, true)
       }
-      if (transactions_datas.length === 1) {
-        console.log('Fixing ' + transactions_datas[0].txid)
-      }
+      transactions_datas = transactions_datas.map(function (tx) { return tx.toJSON() })
       console.time('fix_transactions')
       console.time('fix_transactions - each')
       var bulk_outputs_ids = []
       var bulk_inputs = []
       var bulk_transactions = []
       async.each(transactions_datas, function (transaction_data, cb) {
-        transaction_data = transaction_data.toJSON()
         self.fix_vin(transaction_data, transaction_data.blockheight, bulk_outputs_ids, bulk_inputs, function (err) {
           if (err) return cb(err)
           // console.time('fix_transactions - fix bulk')
@@ -835,13 +832,11 @@ var get_fix_transactions_update_query = function (bulk_outputs_ids, bulk_inputs,
 
   var transactions_updates = transactions.map(function (transaction) {
     var set = {}
-    if (transaction.iosparsed) {
-      set.tries = transaction.tries || 0
-    } else {
-      set.fee = transaction.fee || 0
-      set.totalsent = transaction.totalsent || 0
-      set.iosparsed = true
-    }
+    // Oded: TODO - fix the issue where same fields should be updated
+    set.tries = transaction.tries || 0
+    set.fee = transaction.fee || 0
+    set.totalsent = transaction.totalsent || 0
+    set.iosparsed = transaction.iosparsed || false
     return {
       set: set,
       where: {txid: transaction.txid}
@@ -1111,6 +1106,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
   var inputs_to_fix = {}
   var outputs_conditions
   var find_vin_transactions_query
+  var limit = 5000
 
   if (typeof include_assets === 'function') {
     callback = include_assets
@@ -1138,6 +1134,9 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
       })
     })
 
+    if (raw_transaction_data.vin.length > limit) {
+      console.warn('inputs_to_fix_now.length = ' + inputs_to_fix_now.length + ', inputs_to_fix = ' + Object.keys(inputs_to_fix).length)
+    }
     var all_fixed = (inputs_to_fix_now.length === Object.keys(inputs_to_fix).length)
     if (all_fixed) {
       calc_fee(raw_transaction_data)
@@ -1158,19 +1157,21 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
     callback()
   }
 
+  var is_input_fixed = function (input) {
+    return input.coinbase || input.output_id
+  }
+
   raw_transaction_data.vin.forEach(function (vin) {
-    if (vin.coinbase) {
-      coinbase = true
-    } else {
+    if (!is_input_fixed(vin)) {
       inputs_to_fix[vin.txid + ':' + vin.vout] = vin
     }
   })
 
-  if (coinbase) {
+  if (!Object.keys(inputs_to_fix).length) {
     return end([])
   }
 
-  outputs_conditions = '(' + Object.keys(inputs_to_fix).map(function (txid_index) {
+  outputs_conditions = '(' + Object.keys(inputs_to_fix).slice(0, limit).map(function (txid_index) {
     txid_index = txid_index.split(':')
     var txid = txid_index[0]
     var n = txid_index[1]
@@ -1204,7 +1205,8 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
       '      ORDER BY n) AS vout)) AS vout\n' +
       'FROM\n' +
       '  transactions\n' +
-      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + transactions_conditions + ';'
+      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + transactions_conditions + '\n' +
+      'LIMIT :limit;'
   } else {
     find_vin_transactions_query = '' +
       'SELECT\n' +
@@ -1214,12 +1216,15 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
       '  outputs.value\n' +
       'FROM transactions\n' +
       'JOIN outputs on outputs.txid = transactions.txid\n' +
-      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + ';'
+      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + '\n' +
+      'LIMIT :limit;'
   }
   // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
-  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
+  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT, replacements: {limit: limit}})
     .then(function (vin_transactions) {
-      // console.log('vin_transactions = ', JSON.stringify(vin_transactions))
+      if (raw_transaction_data.vin.length > limit) {
+        console.warn('vin_transactions.length = ', vin_transactions.length)
+      }
       // console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
       if (!include_assets) {
         vin_transactions = _(vin_transactions)
@@ -1431,7 +1436,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
           }
         }
         if (did_work) {
-          // put this query first because of outputs and inputs foreign key constraints, validate trasnaction in DB
+          // put this query first because of outputs and inputs foreign key constraints, validate transaction in DB
           sql_query.unshift(squel.insert()
             .into('transactions')
             .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations', 'index_in_block']}))
