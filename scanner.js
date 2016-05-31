@@ -5,14 +5,14 @@ var _ = require('lodash')
 var CCTransaction = require('cc-transaction')
 var bitcoin = require('bitcoin-async')
 var get_assets_outputs = require('cc-get-assets-outputs')
-var squel = require('squel').useFlavour('postgres')
-var sql_builder = require('nodejs-sql')
-var csvWriter = require('csv-write-stream')
+var sql_builder = require('nodejs-sql')({
+  autoQuoteFieldNames: true,
+  nameQuoteCharacter: '"',
+  separator: '\n'
+})
+var squel = sql_builder.squel.useFlavour('postgres')
 var fs = require('fs')
 var path = require('path')
-squel.cls.DefaultQueryBuilderOptions.autoQuoteFieldNames = true
-squel.cls.DefaultQueryBuilderOptions.nameQuoteCharacter = '"'
-squel.cls.DefaultQueryBuilderOptions.separator = '\n'
 
 var properties
 var bitcoin_rpc
