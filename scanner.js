@@ -5,12 +5,11 @@ var _ = require('lodash')
 var CCTransaction = require('cc-transaction')
 var bitcoin = require('bitcoin-async')
 var get_assets_outputs = require('cc-get-assets-outputs')
-var sql_builder = require('nodejs-sql')({
-  autoQuoteFieldNames: true,
-  nameQuoteCharacter: '"',
-  separator: '\n'
-})
-var squel = sql_builder.squel.useFlavour('postgres')
+var squel = require('squel')
+squel.cls.DefaultQueryBuilderOptions.autoQuoteFieldNames = true
+squel.cls.DefaultQueryBuilderOptions.nameQuoteCharacter = '"'
+squel.cls.DefaultQueryBuilderOptions.separator = '\n'
+var sql_builder = require('nodejs-sql')(squel)
 var fs = require('fs')
 var path = require('path')
 
