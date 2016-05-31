@@ -108,7 +108,6 @@ Scanner.prototype.scan_blocks = function (err) {
           }
           self.parse_new_mempool(cb)
         }, 500)
-        cb()
       } else if (!raw_block_data.previousblockhash || raw_block_data.previousblockhash === last_hash) {
         // logger.debug('parsing block')
         if (debug) {
