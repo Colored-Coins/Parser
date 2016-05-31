@@ -1401,7 +1401,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     function (cb) {
       if (raw_transaction_data.iosparsed) {
         console.log('parse_new_mempool_transaction - #3.1 transaction.iosparsed = true')
-        cb(null, true)
+        cb()
       } else {
         did_work = true
         console.log('parse_new_mempool_transaction - #3.2 fix_vin')

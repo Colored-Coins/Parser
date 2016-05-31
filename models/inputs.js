@@ -13,12 +13,10 @@ module.exports = function (sequelize, DataTypes) {
       primaryKey: true
     },
     txid: {
-      type: ColoredCoinsDataTypes.HASH, // might be null (coinbase) ; might be not unique (mempool)
-      unique: 'txid_vout'
+      type: ColoredCoinsDataTypes.HASH // might be null (coinbase) ; might be not unique (mempool)
     },
     vout: {
-      type: DataTypes.INTEGER, // might be null (coinbase) ; might be not unique (mempool)
-      unique: 'txid_vout'
+      type: DataTypes.INTEGER // might be null (coinbase) ; might be not unique (mempool)
     },
     output_id: {
       type: DataTypes.BIGINT
