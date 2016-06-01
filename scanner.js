@@ -68,7 +68,7 @@ function Scanner (settings, db) {
   self.mempool_cargo = async.cargo(function (tasks, callback) {
     console.log('async.cargo() - parse_mempool_cargo')
     self.parse_mempool_cargo(tasks, callback)
-  }, 500)
+  }, 250)
 }
 
 util.inherits(Scanner, events.EventEmitter)
@@ -506,8 +506,8 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
   })
 }
 
-var get_opreturn_data = function (hex) {
-  return hex.substring(4)
+var get_opreturn_data = function (asm) {
+  return asm.substring('OP_RETURN '.length)
 }
 
 var check_version = function (hex) {
@@ -588,7 +588,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
       vout.scriptPubKey.hex = null
       vout.scriptPubKey.asm = 'TOBIG'
     } else if (vout.scriptPubKey && vout.scriptPubKey.type === 'nulldata') {
-      var hex = get_opreturn_data(vout.scriptPubKey.hex) // remove op_return (0x6a) and data length?
+      var hex = get_opreturn_data(vout.scriptPubKey.asm)
       if (check_version(hex)) {
         try {
           var cc = CCTransaction.fromHex(hex).toJson()
