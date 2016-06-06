@@ -806,12 +806,11 @@ var get_fix_transactions_update_query = function (bulk_outputs_ids, bulk_inputs,
   }
 
   if (bulk_inputs.length) {
-    bulk_inputs.push({txid: 'ffff', vout: -1})  // ugly hack - postgres query planner mistakenly doing seq scan when all 'vout' are the same
     var inputs_conditions = bulk_inputs.map(function (input) {
       return '(inputs.txid = ' + sql_builder.to_value(input.txid) + ' AND inputs.vout = ' + input.vout + ')'
     }).join(' OR ')
 
-    ans.inputs_query = '' + 
+    ans.inputs_query = '' +
       'UPDATE\n' +
       '  inputs\n' +
       'SET\n' +
@@ -1092,7 +1091,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
   })
 }
 
-Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_outputs_ids, bulk_inputs, include_assets, callback) {
+Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_outputs_ids, bulk_inputs, callback) {
   // fixing a transaction - we need to fulfill the condition where a transaction is iosparsed if and only if
   // all of its inputs are fixed. 
   // An input is fixed when it is assigned with the output_id of its associated output, and the output is marked as used.
@@ -1100,16 +1099,11 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
   // Otherwise, it is enough for it to be in DB.
 
   var self = this
-  var coinbase = false
   var inputs_to_fix = {}
+  var colored = raw_transaction_data.colored
   var outputs_conditions
+  var transactions_conditions
   var find_vin_transactions_query
-  var limit = 1000
-
-  if (typeof include_assets === 'function') {
-    callback = include_assets
-    include_assets = false
-  }
 
   if (!raw_transaction_data.vin) {
     return callback('transaction ' + raw_transaction_data.txid + ' does not have vin.')
@@ -1132,9 +1126,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
       })
     })
 
-    if (raw_transaction_data.vin.length > limit) {
-      console.warn('inputs_to_fix_now.length = ' + inputs_to_fix_now.length + ', inputs_to_fix = ' + Object.keys(inputs_to_fix).length)
-    }
     var all_fixed = (inputs_to_fix_now.length === Object.keys(inputs_to_fix).length)
     if (all_fixed) {
       calc_fee(raw_transaction_data)
@@ -1169,17 +1160,14 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
     return end([])
   }
 
-  inputs_to_fix['ffff:-1'] = true
-  outputs_conditions = '(' + Object.keys(inputs_to_fix).slice(0, limit).map(function (txid_index) {
+  outputs_conditions = '(' + Object.keys(inputs_to_fix).map(function (txid_index) {
     txid_index = txid_index.split(':')
     var txid = txid_index[0]
     var n = txid_index[1]
     return '(outputs.txid = ' + sql_builder.to_value(txid) + ' AND outputs.n = ' + n + ')'
   }).join(' OR ') + ')'
-  delete inputs_to_fix['ffff:-1']
 
-  if (include_assets) {
-    var transactions_conditions = '(transactions.txid IN ' + sql_builder.to_values(Object.keys(inputs_to_fix).map(function (txid_index) { return txid_index.split(':')[0] })) +')'
+  if (raw_transaction_data.colored) {
     find_vin_transactions_query = '' +
       'SELECT\n' +
       '  transactions.txid,\n' +
@@ -1201,30 +1189,26 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
       '        AS assets)) AS assets\n' +
       '      FROM\n' +
       '        outputs\n' +
-      '      WHERE (outputs.txid = transactions.txid) AND ' + outputs_conditions + '\n' +
+      '      WHERE (outputs.txid = transactions.txid)\n' +
       '      ORDER BY n) AS vout)) AS vout\n' +
       'FROM\n' +
       '  transactions\n' +
-      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + transactions_conditions + ';'
+      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + ';'
   } else {
     find_vin_transactions_query = '' +
       'SELECT\n' +
-      '  transactions.txid,\n' +
+      '  outputs.txid,\n' +
       '  outputs.n,\n' +
       '  outputs.id,\n' +
       '  outputs.value\n' +
-      'FROM transactions\n' +
-      'JOIN outputs on outputs.txid = transactions.txid\n' +
-      'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + ';'
+      'FROM outputs\n' +
+      'WHERE ' + outputs_conditions + ';'
   }
   // console.time('find_vin_transactions_query ' + raw_transaction_data.txid)
-  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT, replacements: {limit: limit}})
+  self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
     .then(function (vin_transactions) {
-      if (raw_transaction_data.vin.length > limit) {
-        console.warn('vin_transactions.length = ', vin_transactions.length)
-      }
       // console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
-      if (!include_assets) {
+      if (!raw_transaction_data.colored) {
         vin_transactions = _(vin_transactions)
         .groupBy('txid')
         .transform(function (result, vout, txid) {
@@ -1406,7 +1390,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         console.time('parse_new_mempool_transaction - fix_vin ' + raw_transaction_data.txid)
         var bulk_outputs_ids = []
         var bulk_inputs = []
-        self.fix_vin(raw_transaction_data, blockheight, bulk_outputs_ids, bulk_inputs, true, function (err) {
+        self.fix_vin(raw_transaction_data, blockheight, bulk_outputs_ids, bulk_inputs, function (err) {
           if (err) return cb(err)
           console.timeEnd('parse_new_mempool_transaction - fix_vin ' + raw_transaction_data.txid)
           var queries = get_fix_transactions_update_query(bulk_outputs_ids, bulk_inputs)
