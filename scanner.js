@@ -1170,29 +1170,21 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
   if (raw_transaction_data.colored) {
     find_vin_transactions_query = '' +
       'SELECT\n' +
-      '  transactions.txid,\n' +
+      '  outputs.txid,\n' +
+      '  outputs.n,\n' +
+      '  outputs.id,\n' +
+      '  outputs.value,\n' +
       '  to_json(array(\n' +
-      '    SELECT\n' +
-      '      vout\n' +
-      '    FROM\n' +
+      '    SELECT assets FROM\n' +
       '      (SELECT\n' +
-      '        outputs."id", outputs."n", outputs."value",\n' +
-      '        to_json(array(\n' +
-      '         SELECT assets FROM\n' +
-      '           (SELECT\n' +
-      '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
-      '              assets.*\n' +
-      '            FROM\n' +
-      '              assetsoutputs\n' +
-      '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
-      '            WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output)\n' +
-      '        AS assets)) AS assets\n' +
+      '        assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
+      '        assets.*\n' +
       '      FROM\n' +
-      '        outputs\n' +
-      '      WHERE (outputs.txid = transactions.txid)\n' +
-      '      ORDER BY n) AS vout)) AS vout\n' +
-      'FROM\n' +
-      '  transactions\n' +
+      '        assetsoutputs\n' +
+      '      INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
+      '      WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output)\n' +
+      '    AS assets)) AS assets\n' +
+      'JOIN transactions ON transactions.txid = outputs.txid\n' +
       'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + ';'
   } else {
     find_vin_transactions_query = '' +
@@ -1208,14 +1200,12 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
   self.sequelize.query(find_vin_transactions_query, {type: self.sequelize.QueryTypes.SELECT})
     .then(function (vin_transactions) {
       // console.timeEnd('find_vin_transactions_query ' + raw_transaction_data.txid)
-      if (!raw_transaction_data.colored) {
-        vin_transactions = _(vin_transactions)
+      vin_transactions = _(vin_transactions)
         .groupBy('txid')
         .transform(function (result, vout, txid) {
           result.push({txid: txid, vout: vout})
         }, [])
         .value()
-      }
       end(vin_transactions)
     })
     .catch(callback)
