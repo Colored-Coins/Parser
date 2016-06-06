@@ -1184,6 +1184,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
       '      INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
       '      WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output)\n' +
       '    AS assets)) AS assets\n' +
+      'FROM outputs\n' +
       'JOIN transactions ON transactions.txid = outputs.txid\n' +
       'WHERE ((transactions.colored = FALSE) OR (transactions.colored = TRUE AND transactions.iosparsed = TRUE AND transactions.ccparsed = TRUE)) AND ' + outputs_conditions + ';'
   } else {
