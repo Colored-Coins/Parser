@@ -1085,7 +1085,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utx
     if (vout.scriptPubKey && vout.scriptPubKey.type === 'nulldata') {
       // logger.debug('found OP_RETURN')
 
-      var hex = get_opreturn_data(vout.scriptPubKey.hex) // remove op_return (0x6a) and data length?
+      var hex = get_opreturn_data(vout.scriptPubKey.asm)
       // logger.debug('hex', hex)
       if (check_version(hex)) {
         try {
@@ -1149,8 +1149,8 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, utx
   return out
 }
 
-var get_opreturn_data = function (hex) {
-  return hex.substring(4)
+var get_opreturn_data = function (asm) {
+  return asm.substring('OP_RETURN '.length) // don't use simple hex.substring() because there's might be OP_PUSHDATA
 }
 
 var check_version = function (hex) {
