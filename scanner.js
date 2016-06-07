@@ -76,7 +76,7 @@ util.inherits(Scanner, events.EventEmitter)
 Scanner.prototype.scan_blocks = function (err) {
   var self = this
   if (err) {
-    console.error('scan_blocks: err = ', JSON.stringify(err))
+    console.error('scan_blocks: err = ', err, JSON.stringify(err))
     return self.scan_blocks()
   }
   var job
@@ -208,6 +208,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
             })
             self.fix_mempool(function (err) {
               // logger.debug('deleting block')
+              if (err) return callback(err)
               var delete_blocks_query = squel.delete()
                 .from('blocks')
                 .where('height = ?', block_height)
@@ -309,7 +310,7 @@ Scanner.prototype.revert_vin = function (txid, vin, sql_query) {
         .set('used', false)
         .set('usedTxid', null)
         .set('usedBlockheight', null)
-        .where('txid = ? AND n = ? AND usedTxid = ?', input.txid, input.vout, txid)
+        .where('txid = ? AND n = ? AND "usedTxid" = ?', input.txid, input.vout, txid)
         .toString())
     }
     sql_query.push(squel.delete()
@@ -440,7 +441,7 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
         self.mempool_txs.splice(mempool_tx_index, 1)
       }
     }
-    command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
+    command_arr.push({method: 'getrawtransaction', params: [txhash, 1]})
   })
 
   var index_in_block = 0
@@ -726,7 +727,6 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       console.time('fix_transactions - each')
       var bulk_outputs_ids = []
       var bulk_inputs = []
-      var bulk_transactions = []
       async.each(transactions_datas, function (transaction_data, cb) {
         self.fix_vin(transaction_data, transaction_data.blockheight, bulk_outputs_ids, bulk_inputs, function (err) {
           if (err) return cb(err)
@@ -1100,7 +1100,6 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
 
   var self = this
   var inputs_to_fix = {}
-  var colored = raw_transaction_data.colored
   var outputs_conditions
   var transactions_conditions
   var find_vin_transactions_query
