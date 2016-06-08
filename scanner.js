@@ -459,21 +459,15 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
         raw_block_data.fees -= raw_block_data.reward
       }
     }
-    console.log('index_in_block = ' + index_in_block)
     if (!sql_query.length) return cb()
     sql_query = sql_query.join(';\n')
     self.sequelize.transaction(function (sql_transaction) {
-      console.time('parse_new_transaction # ' + raw_transaction_data.index_in_block + ' in block ' + raw_transaction_data.blockheight)
       return self.sequelize.query(sql_query, {transaction: sql_transaction})
-        .then(function () {
-          console.timeEnd('parse_new_transaction # ' + raw_transaction_data.index_in_block + ' in block ' + raw_transaction_data.blockheight)
-          cb()
-        })
+        .then(function () { cb() })
         .catch(cb)
     })
   },
   function (err) {
-    console.log('finished parse_new_transaction for all transactions in block ' + raw_block_data.height)
     var sql_query = ''
     if (err) {
       if ('code' in err && err.code === -5) {
