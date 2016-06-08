@@ -367,9 +367,10 @@ Scanner.prototype.get_next_new_block = function (callback) {
     return callback(null, properties.last_block + 1, properties.last_hash)
   }
   self.Blocks.findOne({
-    where: { txsinserted: true},
+    where: {txsinserted: true},
     attributes: ['height', 'hash'],
-    order: [['height', 'DESC']]
+    order: [['height', 'DESC']],
+    raw: true
   }).then(function (block) {
     if (block) {
       set_last_block(block.height)
@@ -538,7 +539,8 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
     blocktime: raw_transaction_data.blocktime,
     blockheight: raw_transaction_data.blockheight,
     blockhash: raw_transaction_data.blockhash,
-    time: raw_transaction_data.time
+    time: raw_transaction_data.time,
+    index_in_block: raw_transaction_data.index_in_block
   }
 
   // put this query first because of outputs and inputs foreign key constraints, validate transaction in DB
@@ -1752,8 +1754,8 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   var self = this
   var PARSED = 'PARSED'
   var transaction
-  console.log('start priority_parse: '+ txid)
-  console.time('priority_parse: '+ txid)
+  console.log('start priority_parse: ' + txid)
+  console.time('priority_parse: ' + txid)
   var end = function (err) {
     if (~self.priority_parse_list.indexOf(txid)) {
       self.priority_parse_list.splice(self.priority_parse_list.indexOf(txid), 1)
@@ -1770,7 +1772,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
           cb(PARSED)
         })
       }
-      console.time('priority_parse: find in db '+ txid)
+      console.time('priority_parse: find in db ' + txid)
       self.priority_parse_list.push(txid)
       var conditions = {
         txid: txid,
@@ -1792,8 +1794,8 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       })
     },
     function (raw_transaction_data, cb) {
-      console.timeEnd('priority_parse: get_from_bitcoind '+ txid)
-      console.time('priority_parse: parse inputs '+ txid)
+      console.timeEnd('priority_parse: get_from_bitcoind ' + txid)
+      console.time('priority_parse: parse inputs ' + txid)
       transaction = raw_transaction_data
       transaction = to_discrete(transaction)
       if (!transaction || !transaction.vin) return cb(['tx ' + txid + ' not found.', 204])
@@ -1803,8 +1805,8 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       cb)
     },
     function (cb) {
-      console.timeEnd('priority_parse: parse inputs '+ txid)
-      console.time('priority_parse: parse '+ txid)
+      console.timeEnd('priority_parse: parse inputs ' + txid)
+      console.time('priority_parse: parse ' + txid)
       self.mempool_cargo.unshift(txid, cb)
     }
   ],
@@ -1815,7 +1817,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       }
       end(err)
     }
-    console.timeEnd('priority_parse: parse '+ txid)
+    console.timeEnd('priority_parse: parse ' + txid)
     end()
   })
 }
