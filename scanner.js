@@ -68,7 +68,7 @@ function Scanner (settings, db) {
   self.mempool_cargo = async.cargo(function (tasks, callback) {
     console.log('async.cargo() - parse_mempool_cargo')
     self.parse_mempool_cargo(tasks, callback)
-  }, 250)
+  }, 100)
 }
 
 util.inherits(Scanner, events.EventEmitter)
