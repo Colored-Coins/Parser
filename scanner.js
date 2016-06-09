@@ -483,7 +483,7 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
     sql_query += squel.insert()
       .into('blocks')
       .setFields(to_sql_fields(raw_block_data, {exclude: ['tx', 'confirmations']}))
-      .toString() + ';\n' // TODO oded
+      .toString() + ' ON CONFLICT (hash) DO NOTHING;\n'
 
     if (!properties.next_hash && raw_block_data.previousblockhash) {
       sql_query += squel.update()
@@ -1283,7 +1283,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     function (cb) {
       var find_transaction_query = '' +
         'SELECT\n' +
-        '  transactions.*,\n' + 
+        '  transactions.*,\n' +
         '  to_json(array(\n' +
         '    SELECT\n' +
         '      vin\n' +
@@ -1760,10 +1760,10 @@ Scanner.prototype.priority_parse = function (txid, callback) {
     if (~self.priority_parse_list.indexOf(txid)) {
       self.priority_parse_list.splice(self.priority_parse_list.indexOf(txid), 1)
     }
-    console.timeEnd('priority_parse: '+ txid)
+    console.timeEnd('priority_parse: ' + txid)
     callback(err)
   }
-  
+
   async.waterfall([
     function (cb) {
       if (~self.priority_parse_list.indexOf(txid)) {
