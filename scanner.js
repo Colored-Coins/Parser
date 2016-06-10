@@ -483,7 +483,7 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
     sql_query += squel.insert()
       .into('blocks')
       .setFields(to_sql_fields(raw_block_data, {exclude: ['tx', 'confirmations']}))
-      .toString() + ' ON CONFLICT (hash) DO NOTHING;\n'
+      .toString() + ' ON CONFLICT (hash) DO UPDATE SET txsinserted = TRUE;'
 
     if (!properties.next_hash && raw_block_data.previousblockhash) {
       sql_query += squel.update()
