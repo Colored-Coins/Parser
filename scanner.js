@@ -1051,7 +1051,8 @@ Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_
     '  colored = true AND',
     '  blockheight BETWEEN ' + first_block + ' AND ' + last_block,
     'ORDER BY',
-    '  blockheight',
+    '  blockheight ASC,',
+    '  index_in_block ASC',
     'LIMIT 1000;'
   ]
   query = query.join('\n')
@@ -1082,7 +1083,8 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     ],
     order: [
       ['blockheight', 'ASC'],
-      ['tries', 'ASC']
+      ['tries', 'ASC'],
+      ['index_in_block', 'ASC']
     ]
   }).then(function (transactions) {
     console.timeEnd('get_need_to_fix_transactions_by_blocks')
