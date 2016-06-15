@@ -540,7 +540,8 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
     blockheight: raw_transaction_data.blockheight,
     blockhash: raw_transaction_data.blockhash,
     time: raw_transaction_data.time,
-    index_in_block: raw_transaction_data.index_in_block
+    index_in_block: raw_transaction_data.index_in_block,
+    ccdata: raw_transaction_data.ccdata
   }
 
   // put this query first because of outputs and inputs foreign key constraints, validate transaction in DB
@@ -1767,12 +1768,12 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   var PARSED = 'PARSED'
   var transaction
   console.log('start priority_parse: ' + txid)
-  console.time('priority_parse: ' + txid)
+  console.time('priority_parse time: ' + txid)
   var end = function (err) {
     if (~self.priority_parse_list.indexOf(txid)) {
       self.priority_parse_list.splice(self.priority_parse_list.indexOf(txid), 1)
     }
-    console.timeEnd('priority_parse: ' + txid)
+    console.timeEnd('priority_parse time: ' + txid)
     callback(err)
   }
 
