@@ -586,6 +586,9 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
   var addresses = []
   if (!raw_transaction_data.vout) return 0
   raw_transaction_data.ccdata = raw_transaction_data.ccdata || []
+  if (raw_transaction_data.txid === '4bda13db7eb7227b8561b23f88a2a865e3d169a0b3af8b7b3a3f9a924e955eb3') {
+    console.log('parse_vout 4bda13db7eb7227b8561b23f88a2a865e3d169a0b3af8b7b3a3f9a924e955eb3')
+  }
   raw_transaction_data.vout.forEach(function (vout) {
     if (vout.scriptPubKey.hex.length > 2000) {
       vout.scriptPubKey.hex = null
@@ -604,6 +607,11 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
         }
       }
     }
+
+    if (raw_transaction_data.txid === '4bda13db7eb7227b8561b23f88a2a865e3d169a0b3af8b7b3a3f9a924e955eb3') {
+      console.log('parse_vout 4bda13db7eb7227b8561b23f88a2a865e3d169a0b3af8b7b3a3f9a924e955eb3, ccdata = ', raw_transaction_data.ccdata)
+    }
+
     out += vout.value
 
     var new_utxo = {
@@ -1083,7 +1091,6 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     ],
     order: [
       ['blockheight', 'ASC'],
-      ['tries', 'ASC'],
       ['index_in_block', 'ASC']
     ]
   }).then(function (transactions) {

@@ -102,9 +102,6 @@ module.exports = function (sequelize, DataTypes) {
         fields: ['ccparsed']
       },
       {
-        fields: ['tries']
-      },
-      {
         fields: ['blockheight', 'iosparsed']
       },
       {
@@ -114,7 +111,7 @@ module.exports = function (sequelize, DataTypes) {
         fields: ['blockheight', 'colored', 'ccparsed']
       },
       {
-        fields: ['blockheight', 'tries']
+        fields: ['blockheight', 'index_in_block']
       }
     ],
     timestamps: false

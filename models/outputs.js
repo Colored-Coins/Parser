@@ -55,13 +55,7 @@ module.exports = function (sequelize, DataTypes) {
       },
       {
         fields: ['used']
-      },
-      {
-        fields: ['usedBlockheight']
       }
-      // {
-      //   fields: ['scriptPubKey.type']
-      // }
     ],
     timestamps: false
   })
