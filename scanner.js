@@ -1345,6 +1345,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     },
     function (l_transaction_data, cb) {
       console.timeEnd('parse_new_mempool_transaction - #1 lookup in DB, txid = ' + raw_transaction_data.txid)
+      console.time('parse_new_mempool_transaction - #2 get_block_height, txid = ' + raw_transaction_data.txid)
       transaction_data = l_transaction_data
       if (transaction_data) {
         console.log('parse_new_mempool_transaction - #1 found in DB: transaction = ' + raw_transaction_data.txid)
@@ -1355,7 +1356,6 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         console.log('parse_new_mempool_transaction: did not find in DB, parsing new tx: ' + raw_transaction_data.txid)
         did_work = true
         if (blockheight === -1 && raw_transaction_data.blockhash) {
-          console.time('parse_new_mempool_transaction - #2 get_block_height, txid = ' + raw_transaction_data.txid)
           get_block_height(raw_transaction_data.blockhash, cb)
         } else {
           cb(null, blockheight)
