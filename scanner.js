@@ -540,9 +540,7 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
     blockheight: raw_transaction_data.blockheight,
     blockhash: raw_transaction_data.blockhash,
     time: raw_transaction_data.time,
-    index_in_block: raw_transaction_data.index_in_block,
-    ccdata: JSON.stringify(raw_transaction_data.ccdata),
-    colored: raw_transaction_data.colored || false
+    index_in_block: raw_transaction_data.index_in_block
   }
 
   // put this query first because of outputs and inputs foreign key constraints, validate transaction in DB
