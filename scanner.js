@@ -49,6 +49,7 @@ function Scanner (settings, db) {
       process.send({to: properties.roles.API, newtransaction: newtransaction})
     })
     self.on('newcctransaction', function (newcctransaction) {
+      console.log('scanner.js: ' + process.env.ROLE + ' newcctransaction')
       process.send({to: properties.roles.API, newcctransaction: newcctransaction})
     })
     self.on('revertedblock', function (revertedblock) {
@@ -1342,16 +1343,16 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         .catch(cb)
     },
     function (l_transaction_data, cb) {
-      console.timeEnd('parse_new_mempool_transaction - #1 lookup in DB, txid = ' + raw_transaction_data.txid)
-      console.time('parse_new_mempool_transaction - #2 get_block_height, txid = ' + raw_transaction_data.txid)
+      // console.timeEnd('parse_new_mempool_transaction - #1 lookup in DB, txid = ' + raw_transaction_data.txid)
+      // console.time('parse_new_mempool_transaction - #2 get_block_height, txid = ' + raw_transaction_data.txid)
       transaction_data = l_transaction_data
       if (transaction_data) {
-        console.log('parse_new_mempool_transaction - #1 found in DB: transaction = ' + raw_transaction_data.txid)
+        // console.log('parse_new_mempool_transaction - #1 found in DB: transaction = ' + raw_transaction_data.txid)
         raw_transaction_data = transaction_data
         // blockheight = raw_transaction_data.blockheight || -1
         cb(null, blockheight)
       } else {
-        console.log('parse_new_mempool_transaction: did not find in DB, parsing new tx: ' + raw_transaction_data.txid)
+        // console.log('parse_new_mempool_transaction: did not find in DB, parsing new tx: ' + raw_transaction_data.txid)
         did_work = true
         if (blockheight === -1 && raw_transaction_data.blockhash) {
           get_block_height(raw_transaction_data.blockhash, cb)
@@ -1362,8 +1363,8 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     },
     function (l_blockheight, cb) {
       blockheight = l_blockheight
-      console.timeEnd('parse_new_mempool_transaction - #2 get_block_height, txid = ' + raw_transaction_data.txid)
-      console.log('parse_new_mempool_transaction - #2 blockheight = ', blockheight)
+      // console.timeEnd('parse_new_mempool_transaction - #2 get_block_height, txid = ' + raw_transaction_data.txid)
+      // console.log('parse_new_mempool_transaction - #2 blockheight = ', blockheight)
       if (transaction_data) return cb()
       if (raw_transaction_data.time) {
         raw_transaction_data.time = raw_transaction_data.time * 1000
@@ -1383,17 +1384,17 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     },
     function (cb) {
       if (raw_transaction_data.iosparsed) {
-        console.log('parse_new_mempool_transaction - #3.1 transaction.iosparsed = true, txid = ' + raw_transaction_data.txid)
+        // console.log('parse_new_mempool_transaction - #3.1 transaction.iosparsed = true, txid = ' + raw_transaction_data.txid)
         cb()
       } else {
         did_work = true
-        console.log('parse_new_mempool_transaction - #3.2 fix_vin')
-        console.time('parse_new_mempool_transaction - fix_vin ' + raw_transaction_data.txid)
+        // console.log('parse_new_mempool_transaction - #3.2 fix_vin')
+        // console.time('parse_new_mempool_transaction - fix_vin ' + raw_transaction_data.txid)
         var bulk_outputs_ids = []
         var bulk_inputs = []
         self.fix_vin(raw_transaction_data, blockheight, bulk_outputs_ids, bulk_inputs, function (err) {
           if (err) return cb(err)
-          console.timeEnd('parse_new_mempool_transaction - fix_vin ' + raw_transaction_data.txid)
+          // console.timeEnd('parse_new_mempool_transaction - fix_vin ' + raw_transaction_data.txid)
           var queries = get_fix_transactions_update_query(bulk_outputs_ids, bulk_inputs)
           sql_query.push(queries.outputs_query)
           sql_query.push(queries.inputs_query)
@@ -1403,11 +1404,11 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     },
     function (cb) {
       if (raw_transaction_data.ccparsed) {
-        console.log('parse_new_mempool_transaction - #4.1 raw_transaction_data.ccparsed = true, txid = ', raw_transaction_data.txid)
+        // console.log('parse_new_mempool_transaction - #4.1 raw_transaction_data.ccparsed = true, txid = ', raw_transaction_data.txid)
         cb(null, null)
       } else {
         if (raw_transaction_data.iosparsed && raw_transaction_data.colored && !raw_transaction_data.ccparsed) {
-          console.log('parse_new_mempool_transaction - #4.2 parse_cc_tx, txid = ', raw_transaction_data.txid)
+          // console.log('parse_new_mempool_transaction - #4.2 parse_cc_tx, txid = ', raw_transaction_data.txid)
           self.parse_cc_tx(raw_transaction_data, sql_query)
           raw_transaction_data.ccparsed = true
           did_work = true
