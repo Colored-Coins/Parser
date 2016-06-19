@@ -49,7 +49,7 @@ function Scanner (settings, db) {
       process.send({to: properties.roles.API, newtransaction: newtransaction})
     })
     self.on('newcctransaction', function (newcctransaction) {
-      console.log('scanner.js: ' + process.env.ROLE + ' newcctransaction')
+      console.log('scanner.js: ' + process.env.ROLE + ' newcctransaction ', newcctransaction)
       process.send({to: properties.roles.API, newcctransaction: newcctransaction})
     })
     self.on('revertedblock', function (revertedblock) {
