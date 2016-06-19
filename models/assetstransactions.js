@@ -18,12 +18,12 @@ module.exports = function (sequelize, DataTypes) {
     }
   },
   {
-    // classMethods: {
-    //   associate: function (models) {
-    //     AssetsTransactions.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
-    //     AssetsTransactions.belongsTo(models.transactions, { foreignKey: 'txid', as: 'transaction' })
-    //   }
-    // },
+    classMethods: {
+      associate: function (models) {
+        AssetsTransactions.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
+        AssetsTransactions.belongsTo(models.transactions, { foreignKey: 'txid', as: 'transaction' })
+      }
+    },
     indexes: [
       {
         fields: ['assetId']

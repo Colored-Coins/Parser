@@ -9,14 +9,14 @@ module.exports = function (sequelize, DataTypes) {
       primaryKey: true
     },
     input_index: {
-      type: DataTypes.INTEGER,
+      type: 'SMALLINT',
       primaryKey: true
     },
     txid: {
       type: ColoredCoinsDataTypes.HASH // might be null (coinbase) ; might be not unique (mempool)
     },
     vout: {
-      type: DataTypes.INTEGER // might be null (coinbase) ; might be not unique (mempool)
+      type: 'SMALLINT' // might be null (coinbase) ; might be not unique (mempool)
     },
     output_id: {
       type: DataTypes.BIGINT
@@ -51,6 +51,9 @@ module.exports = function (sequelize, DataTypes) {
       },
       {
         fields: ['txid']
+      },
+      {
+        fields: ['txid', 'vout']
       },
       {
         fields: ['output_id']

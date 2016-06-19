@@ -48,13 +48,7 @@ module.exports = function (sequelize, DataTypes) {
         fields: ['txid']
       },
       {
-        fields: ['n']
-      },
-      {
         fields: ['txid', 'n', 'used']
-      },
-      {
-        fields: ['used']
       }
     ],
     timestamps: false

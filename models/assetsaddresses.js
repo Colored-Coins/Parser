@@ -14,11 +14,11 @@ module.exports = function (sequelize, DataTypes) {
     }
   },
   {
-    // classMethods: {
-    //   associate: function (models) {
-    //     AssetsAddresses.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
-    //   },
-    // },
+    classMethods: {
+      associate: function (models) {
+        AssetsAddresses.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
+      }
+    },
     indexes: [
       {
         fields: ['assetId']
