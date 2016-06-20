@@ -1343,7 +1343,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       // console.time('parse_new_mempool_transaction - #2 get_block_height, txid = ' + raw_transaction_data.txid)
       transaction_data = l_transaction_data
       if (transaction_data) {
-        // console.log('parse_new_mempool_transaction - #1 found in DB: transaction = ' + raw_transaction_data.txid)
+        console.log('parse_new_mempool_transaction - #1 found in DB: transaction = ', raw_transaction_data)
         raw_transaction_data = transaction_data
         // blockheight = raw_transaction_data.blockheight || -1
         cb(null, blockheight)
@@ -1428,10 +1428,6 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   ],
   function (err) {
     if (err) return callback(err)
-    // emits.forEach(function (emit) {
-    //   console.log('scanner.js (parse_new_mempool_transaction): ' + process.env.ROLE + ', emit: ' + emit[0] + ' : ' + emit[1].txid)
-    //   self.emit(emit[0], emit[1])
-    // })
     callback(null, did_work, raw_transaction_data.iosparsed, raw_transaction_data.ccparsed)
   })
 }
@@ -1463,14 +1459,14 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     raw_transaction_data = to_discrete(raw_transaction_data)
     console.time('parse_new_mempool_transaction time - ' + raw_transaction_data.txid)
     self.parse_new_mempool_transaction(raw_transaction_data, sql_query, emits, function (err, did_work, iosparsed, ccparsed) {
-      console.log('parse_new_mempool: parse_new_mempool_transaction ended ' + raw_transaction_data.txid + ' - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', ccparsed = ', ccparsed)
+      console.log('parse_new_mempool: parse_new_mempool_transaction ended ' + raw_transaction_data.txid + ' - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', colored = ' + raw_transaction_data.colored + ', ccparsed = ', ccparsed)
       if (err) return cb(err)
       if (iosparsed) {
         // work may have been done in priority_parse in context pf API
         new_mempool_txs.push({
           txid: raw_transaction_data.txid,
           iosparsed: iosparsed,
-          colored: raw_transaction_data.colored || false,
+          colored: raw_transaction_data.colored,
           ccparsed: ccparsed
         })
       }
