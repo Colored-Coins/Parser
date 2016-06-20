@@ -70,9 +70,10 @@ function Scanner (settings, db) {
     process.on('message', function (msg) {
       console.log(process.env.ROLE + ' got ' + msg)
       if (msg.priority_parsed) {
-        remove_from_mempool_cache(msg.priority_parsed)
+        self.remove_from_mempool_cache(msg.priority_parsed)
       }
-    }
+    })
+  }
 
   self.mempool_cargo = async.cargo(function (tasks, callback) {
     console.log('async.cargo() - parse_mempool_cargo')
@@ -168,7 +169,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
     'WHERE\n' +
     '  blocks.height = :height'
 
-  self.sequelize.query(find_block_query, {type: self.sequelize.QueryTypes.SELECT, replacements: {height: block_height}, logging: console.log, benchmark: true})
+  self.sequelize.query(find_block_query, {type: self.sequelize.QueryTypes.SELECT, replacements: {height: block_height}})
     .then(function (block_data) {
       if (!block_data || !block_data.length) return callback('no block for height ' + block_height)
       block_data = block_data[0]
@@ -207,7 +208,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
         }
         // logger.debug('executing bulks')
         sql_query = sql_query.join(';\n')
-        self.sequelize.query(sql_query, {logging: console.log, benchmark: true})
+        self.sequelize.query(sql_query)
           .then(function () {
             txids.forEach(function (txid) {
               self.emit('revertedtransaction', {txid: txid})
@@ -222,7 +223,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
                 .from('blocks')
                 .where('height = ?', block_height)
                 .toString()
-              self.sequelize.query(delete_blocks_query, {logging: console.log, benchmark: true})
+              self.sequelize.query(delete_blocks_query)
                 .then(function () {
                   self.emit('revertedblock', block_id)
                   set_last_hash(block_data.previousblockhash)
@@ -243,7 +244,7 @@ Scanner.prototype.fix_mempool = function (callback) {
     .set('ccparsed', false)
     .where('blockheight = -1')
     .toString()
-  this.sequelize.query(fix_mempool_query, {logging: console.log, benchmark: true}).then(function () { callback() }).catch(callback)
+  this.sequelize.query(fix_mempool_query).then(function () { callback() }).catch(callback)
 }
 
 Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
@@ -357,9 +358,7 @@ Scanner.prototype.get_next_block_to_fix = function (limit, callback) {
     attributes: ['height', 'hash'],
     limit: limit,
     order: [['height', 'ASC']],
-    raw: true,
-    logging: console.log,
-    benchmark: true
+    raw: true
   }).then(function (blocks) { 
     console.log('get_next_block_to_fix - found ' + blocks.length + ' blocks')
     callback(null, blocks) 
@@ -714,9 +713,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       self.Blocks.update(
         update,
         {
-          where: conditions,
-          logging: console.log,
-          benchmark: true
+          where: conditions
         }
       ).then(function (res) {
         console.log('fix_blocks - close_blocks - success')
@@ -1564,7 +1561,7 @@ Scanner.prototype.revert_txids = function (callback) {
                 colored_txids.push(txid)
               }
               sql_query = sql_query.join(';\n')
-              return self.sequelize.query(sql_query, {logging: console.log, benchmark: true})
+              return self.sequelize.query(sql_query)
                 .then(function () { cb(null, revert_flags_txids) })
                 .catch(cb)
             })
@@ -1597,7 +1594,7 @@ Scanner.prototype.revert_txids = function (callback) {
           .where('txid IN ?', revert_flags_txids)
           .toString() + ';'
 
-        return self.sequelize.query(sql_query, {logging: console.log, benchmark: true})
+        return self.sequelize.query(sql_query)
           .then(function () {
             regular_txids.forEach(function (txid) {
               self.emit('revertedtransaction', {txid: txid})
@@ -1719,7 +1716,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         if (!--cargo_size) {
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
           self.to_revert = self.to_revert.concat(db_txids)
-          db_txids.forEach(remove_from_mempool_cache)
+          db_txids.forEach(self.remove_from_mempool_cache)
           end_func()
         }
       })
