@@ -68,7 +68,7 @@ function Scanner (settings, db) {
 
   if (process.env.ROLE === properties.roles.SCANNER) {
     process.on('message', function (msg) {
-      console.log(process.env.ROLE + ' got ' + msg)
+      console.log(process.env.ROLE + ' got ', msg)
       if (msg.priority_parsed) {
         self.remove_from_mempool_cache(msg.priority_parsed)
       }
@@ -1472,7 +1472,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     raw_transaction_data = to_discrete(raw_transaction_data)
     console.time('parse_new_mempool_transaction time - ' + raw_transaction_data.txid)
     self.parse_new_mempool_transaction(raw_transaction_data, sql_query, emits, function (err, did_work, iosparsed, ccparsed) {
-      // console.log('parse_new_mempool: parse_new_mempool_transaction ended - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', ccparsed = ', ccparsed)
+      console.log('parse_new_mempool: parse_new_mempool_transaction ended ' + raw_transaction_data.txid + ' - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', ccparsed = ', ccparsed)
       if (err) return cb(err)
       if (!did_work) {
         return cb()
@@ -1517,6 +1517,12 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
           }
         })
         if (!found) {
+          console.log('self.mempool_txs.push(' + JSON.stringify({
+            txid: mempool_tx.txid,
+            iosparsed: mempool_tx.iosparsed,
+            colored: mempool_tx.colored,
+            ccparsed: mempool_tx.ccparsed
+          }) + ')')
           self.mempool_txs.push({
             txid: mempool_tx.txid,
             iosparsed: mempool_tx.iosparsed,
@@ -1671,7 +1677,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           },
         cb)
       } else {
-        console.log('getting mempool from memory cache')
+        console.log('getting mempool from memory cache, self.mempool_txs = ', self.mempool_txs)
         self.mempool_txs.forEach(function (transaction) {
           if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
             db_parsed_txids.push(transaction.txid)
