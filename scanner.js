@@ -1413,12 +1413,12 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
           raw_transaction_data.ccparsed = true
           did_work = true
         }
-        // if (did_work && raw_transaction_data.iosparsed) {
-        //   emits.push(['newtransaction', raw_transaction_data])
-        //   if (raw_transaction_data.colored) {
-        //     emits.push(['newcctransaction', raw_transaction_data])
-        //   }
-        // }
+        if (did_work && raw_transaction_data.iosparsed) {
+          emits.push(['newtransaction', raw_transaction_data])
+          if (raw_transaction_data.colored) {
+            emits.push(['newcctransaction', raw_transaction_data])
+          }
+        }
         if (did_work) {
           // put this query first because of outputs and inputs foreign key constraints, validate transaction in DB
           sql_query.unshift(squel.insert()
