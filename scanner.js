@@ -1286,7 +1286,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       console.time('parse_new_mempool_transaction - #1 lookup in DB, txid = ' + raw_transaction_data.txid)
       var find_transaction_query = '' +
         'SELECT\n' +
-        '  transactions.*,\n' +
+        '  ' + sql_builder.to_columns_of_model(self.Transactions, {exclude: ['hex']}) + ',\n' +
         '  to_json(array(\n' +
         '    SELECT\n' +
         '      vin\n' +
