@@ -1433,6 +1433,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   function (err) {
     if (err) return callback(err)
     emits.forEach(function (emit) {
+      console.log('scanner.js (parse_new_mempool_transaction): ' + process.env.ROLE + ', emit: ' + emit[0] + ' : ' + emit[1].txid)
       self.emit(emit[0], emit[1])
     })
     callback(null, did_work, raw_transaction_data.iosparsed, raw_transaction_data.ccparsed)
@@ -1521,6 +1522,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       })
     }
     emits.forEach(function (emit) {
+      console.log('scanner.js (parse_mempool_cargo): ' + process.env.ROLE + ', emit: ' + emit[0] + ' : ' + emit[1].txid)
       self.emit(emit[0], emit[1])
     })
     callback()
