@@ -1283,7 +1283,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   var blockheight = -1
   async.waterfall([
     function (cb) {
-      console.time('parse_new_mempool_transaction - #1 lookup in DB, txid = ' + raw_transaction_data.txid)
+      // console.time('parse_new_mempool_transaction - #1 lookup in DB, txid = ' + raw_transaction_data.txid)
       var find_transaction_query = '' +
         'SELECT\n' +
         '  ' + sql_builder.to_columns_of_model(self.Transactions, {exclude: ['hex']}) + ',\n' +
@@ -1334,7 +1334,6 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         '  transactions\n' +
         'WHERE\n' +
         '  txid = :txid;'
-      console.log(find_transaction_query)
       self.sequelize.query(find_transaction_query, {replacements: {txid: raw_transaction_data.txid}, type: self.sequelize.QueryTypes.SELECT})
         .then(function (transactions) { cb(null, transactions[0]) })
         .catch(cb)
@@ -1344,7 +1343,6 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       // console.time('parse_new_mempool_transaction - #2 get_block_height, txid = ' + raw_transaction_data.txid)
       transaction_data = l_transaction_data
       if (transaction_data) {
-        console.log('parse_new_mempool_transaction - #1 found in DB: transaction = ', raw_transaction_data)
         raw_transaction_data = transaction_data
         // blockheight = raw_transaction_data.blockheight || -1
         cb(null, blockheight)
@@ -1460,7 +1458,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     raw_transaction_data = to_discrete(raw_transaction_data)
     console.time('parse_new_mempool_transaction time - ' + raw_transaction_data.txid)
     self.parse_new_mempool_transaction(raw_transaction_data, sql_query, emits, function (err, did_work, iosparsed, colored, ccparsed) {
-      console.log('parse_new_mempool: parse_new_mempool_transaction ended ' + raw_transaction_data.txid + ' - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', colored = ' + colored + ', ccparsed = ', ccparsed)
+      // console.log('parse_new_mempool: parse_new_mempool_transaction ended ' + raw_transaction_data.txid + ' - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', colored = ' + colored + ', ccparsed = ', ccparsed)
       if (err) return cb(err)
       if (iosparsed) {
         // work may have been done in priority_parse in context pf API
@@ -1508,12 +1506,6 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
           }
         })
         if (!found) {
-          console.log('self.mempool_txs.push(' + JSON.stringify({
-            txid: mempool_tx.txid,
-            iosparsed: mempool_tx.iosparsed,
-            colored: mempool_tx.colored,
-            ccparsed: mempool_tx.ccparsed
-          }) + ')')
           self.mempool_txs.push({
             txid: mempool_tx.txid,
             iosparsed: mempool_tx.iosparsed,
