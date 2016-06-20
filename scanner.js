@@ -66,6 +66,14 @@ function Scanner (settings, db) {
     })
   }
 
+  if (process.env.ROLE === properties.roles.SCANNER) {
+    process.on('message', function (msg) {
+      console.log(process.env.ROLE + ' got ' + msg)
+      if (msg.priority_parsed) {
+        remove_from_mempool_cache(msg.priority_parsed)
+      }
+    }
+
   self.mempool_cargo = async.cargo(function (tasks, callback) {
     console.log('async.cargo() - parse_mempool_cargo')
     self.parse_mempool_cargo(tasks, callback)
@@ -1711,24 +1719,28 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         if (!--cargo_size) {
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
           self.to_revert = self.to_revert.concat(db_txids)
-          db_txids.forEach(function (txid) {
-            if (self.mempool_txs) {
-              var mempool_tx_index = -1
-              self.mempool_txs.forEach(function (mempool_tx, i) {
-                if (!~mempool_tx_index && mempool_tx.txid === txid) {
-                  mempool_tx_index = i
-                }
-              })
-              if (~mempool_tx_index) {
-                self.mempool_txs.splice(mempool_tx_index, 1)
-              }
-            }
-          })
+          db_txids.forEach(remove_from_mempool_cache)
           end_func()
         }
       })
     }
   ], callback)
+}
+
+Scanner.prototype.remove_from_mempool_cache = function (txid) {
+  console.log('remove_from_mempool_cache, txid = ' + txid + ' start.')
+  if (self.mempool_txs) {
+    var mempool_tx_index = -1
+    self.mempool_txs.forEach(function (mempool_tx, i) {
+      if (!~mempool_tx_index && mempool_tx.txid === txid) {
+        mempool_tx_index = i
+      }
+    })
+    if (~mempool_tx_index) {
+      console.log('remove_from_mempool_cache, txid = ' + txid + ' end.')
+      self.mempool_txs.splice(mempool_tx_index, 1)
+    }
+  }
 }
 
 Scanner.prototype.wait_for_parse = function (txid, callback) {
@@ -1771,6 +1783,10 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   var end = function (err) {
     if (~self.priority_parse_list.indexOf(txid)) {
       self.priority_parse_list.splice(self.priority_parse_list.indexOf(txid), 1)
+    }
+    if (process.env.ROLE !== properties.roles.SCANNER) {
+      console.log('priority_parse: ' + process.env.ROLE + ' send priority_parse ' + txid + ' to SCANNER')
+      process.send({to: properties.roles.SCANNER, priority_parsed: txid})
     }
     console.timeEnd('priority_parse time: ' + txid)
     callback(err)
