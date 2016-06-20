@@ -66,15 +66,6 @@ function Scanner (settings, db) {
     })
   }
 
-  if (process.env.ROLE === properties.roles.SCANNER) {
-    process.on('message', function (msg) {
-      console.log(process.env.ROLE + ' got ', msg)
-      if (msg.priority_parsed) {
-        self.remove_from_mempool_cache(msg.priority_parsed)
-      }
-    })
-  }
-
   self.mempool_cargo = async.cargo(function (tasks, callback) {
     console.log('async.cargo() - parse_mempool_cargo')
     self.parse_mempool_cargo(tasks, callback)
@@ -1474,15 +1465,18 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     self.parse_new_mempool_transaction(raw_transaction_data, sql_query, emits, function (err, did_work, iosparsed, ccparsed) {
       console.log('parse_new_mempool: parse_new_mempool_transaction ended ' + raw_transaction_data.txid + ' - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', ccparsed = ', ccparsed)
       if (err) return cb(err)
+      if (iosparsed) {
+        // work may have been done in priority_parse in context pf API
+        new_mempool_txs.push({
+          txid: raw_transaction_data.txid,
+          iosparsed: iosparsed,
+          colored: raw_transaction_data.colored || false,
+          ccparsed: ccparsed
+        })
+      }
       if (!did_work) {
         return cb()
       }
-      new_mempool_txs.push({
-        txid: raw_transaction_data.txid,
-        iosparsed: iosparsed,
-        colored: raw_transaction_data.colored || false,
-        ccparsed: ccparsed
-      })
       if (!sql_query.length) return cb()
       sql_query = sql_query.join(';\n')
       self.sequelize.transaction(function (sql_transaction) {
@@ -1788,10 +1782,6 @@ Scanner.prototype.priority_parse = function (txid, callback) {
     if (~self.priority_parse_list.indexOf(txid)) {
       self.priority_parse_list.splice(self.priority_parse_list.indexOf(txid), 1)
     }
-    if (process.env.ROLE !== properties.roles.SCANNER) {
-      console.log('priority_parse: ' + process.env.ROLE + ' send priority_parse ' + txid + ' to SCANNER')
-      process.send({to: properties.roles.SCANNER, priority_parsed: txid})
-    }
     console.timeEnd('priority_parse time: ' + txid)
     callback(err)
   }
@@ -1822,7 +1812,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       console.time('priority_parse: get_from_bitcoind ' + txid)
       bitcoin_rpc.cmd('getrawtransaction', [txid, 1], function (err, raw_transaction_data) {
         if (err && err.code === -5) return cb(['tx ' + txid + ' not found.', 204])
-        cb(err, raw_transaction_data)
+        cb(null, raw_transaction_data)
       })
     },
     function (raw_transaction_data, cb) {
