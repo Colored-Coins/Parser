@@ -1334,6 +1334,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         '  transactions\n' +
         'WHERE\n' +
         '  txid = :txid;'
+      console.log(find_transaction_query)
       self.sequelize.query(find_transaction_query, {replacements: {txid: raw_transaction_data.txid}, type: self.sequelize.QueryTypes.SELECT})
         .then(function (transactions) { cb(null, transactions[0]) })
         .catch(cb)
@@ -1428,7 +1429,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   ],
   function (err) {
     if (err) return callback(err)
-    callback(null, did_work, raw_transaction_data.iosparsed, raw_transaction_data.ccparsed)
+    callback(null, did_work, raw_transaction_data.iosparsed, raw_transaction_data.colored, raw_transaction_data.ccparsed)
   })
 }
 
@@ -1458,15 +1459,15 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     }
     raw_transaction_data = to_discrete(raw_transaction_data)
     console.time('parse_new_mempool_transaction time - ' + raw_transaction_data.txid)
-    self.parse_new_mempool_transaction(raw_transaction_data, sql_query, emits, function (err, did_work, iosparsed, ccparsed) {
-      console.log('parse_new_mempool: parse_new_mempool_transaction ended ' + raw_transaction_data.txid + ' - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', colored = ' + raw_transaction_data.colored + ', ccparsed = ', ccparsed)
+    self.parse_new_mempool_transaction(raw_transaction_data, sql_query, emits, function (err, did_work, iosparsed, colored, ccparsed) {
+      console.log('parse_new_mempool: parse_new_mempool_transaction ended ' + raw_transaction_data.txid + ' - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', colored = ' + colored + ', ccparsed = ', ccparsed)
       if (err) return cb(err)
       if (iosparsed) {
         // work may have been done in priority_parse in context pf API
         new_mempool_txs.push({
           txid: raw_transaction_data.txid,
           iosparsed: iosparsed,
-          colored: raw_transaction_data.colored,
+          colored: colored,
           ccparsed: ccparsed
         })
       }
