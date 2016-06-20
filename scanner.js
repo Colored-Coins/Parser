@@ -1725,6 +1725,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
 }
 
 Scanner.prototype.remove_from_mempool_cache = function (txid) {
+  var self = this
   console.log('remove_from_mempool_cache, txid = ' + txid + ' start.')
   if (self.mempool_txs) {
     var mempool_tx_index = -1
