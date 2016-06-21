@@ -883,7 +883,6 @@ Scanner.prototype.parse_cc = function (err, callback) {
       var blocks_heights = []
       raw_block_datas.forEach(function (raw_block_data) {
         if (raw_block_data.txsparsed) {
-          raw_block_data.confirmations = properties.last_block - raw_block_data.height + 1
           self.emit('newblock', raw_block_data)
           set_last_fully_parsed_block(raw_block_data.height)
           blocks_heights.push(raw_block_data.height)
