@@ -10,8 +10,6 @@ squel.cls.DefaultQueryBuilderOptions.autoQuoteFieldNames = true
 squel.cls.DefaultQueryBuilderOptions.nameQuoteCharacter = '"'
 squel.cls.DefaultQueryBuilderOptions.separator = '\n'
 var sql_builder = require('nodejs-sql')(squel)
-var fs = require('fs')
-var path = require('path')
 
 var properties
 var bitcoin_rpc
@@ -139,7 +137,7 @@ Scanner.prototype.scan_blocks = function (err) {
 Scanner.prototype.revert_block = function (block_height, callback) {
   var self = this
   console.log('Reverting block: ' + block_height)
-  var find_block_query = '' + 
+  var find_block_query = '' +
     'SELECT\n' +
     '  hash,\n' +
     '  previousblockhash,\n' +
@@ -220,7 +218,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
                   set_last_hash(block_data.previousblockhash)
                   set_last_block(block_data.height - 1)
                   set_next_hash(null)
-                  callback()              
+                  callback()
                 }).catch(callback)
             })
           }).catch(callback)
@@ -343,16 +341,15 @@ Scanner.prototype.get_next_block_to_fix = function (limit, callback) {
   var conditions = {
     txsinserted: true, txsparsed: false
   }
-  this.Blocks.findAll(
-  {
+  this.Blocks.findAll({
     where: conditions,
     attributes: ['height', 'hash'],
     limit: limit,
     order: [['height', 'ASC']],
     raw: true
-  }).then(function (blocks) { 
+  }).then(function (blocks) {
     console.log('get_next_block_to_fix - found ' + blocks.length + ' blocks')
-    callback(null, blocks) 
+    callback(null, blocks)
   }).catch(function (e) {
     console.log('get_next_block_to_fix - e = ', e)
     callback(e)
@@ -639,7 +636,7 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
       .into('addressestransactions')
       .set('address', address)
       .set('txid', raw_transaction_data.txid)
-      .toString() + ' ON CONFLICT (address, txid) DO NOTHING')    
+      .toString() + ' ON CONFLICT (address, txid) DO NOTHING')
   })
 
   return out
@@ -647,7 +644,6 @@ Scanner.prototype.parse_vout = function (raw_transaction_data, block_height, sql
 
 Scanner.prototype.scan_mempol_only = function (err) {
   var self = this
-  // logger.debug('scanning mempool')
   if (err) {
     console.error(err)
     return self.scan_mempol_only()
@@ -766,7 +762,7 @@ Scanner.prototype.fix_blocks = function (err, callback) {
               cb()
             }).catch(cb)
           }
-        ], 
+        ],
         function (err) {
           if (err) {
             console.log('fix_transactions - err = ', JSON.stringify(err))
@@ -1095,7 +1091,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
 
 Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_outputs_ids, bulk_inputs, callback) {
   // fixing a transaction - we need to fulfill the condition where a transaction is iosparsed if and only if
-  // all of its inputs are fixed. 
+  // all of its inputs are fixed.
   // An input is fixed when it is assigned with the output_id of its associated output, and the output is marked as used.
   // If the transaction is colored - this should happen only after this output's transaction is both iosparsed AND ccparsed.
   // Otherwise, it is enough for it to be in DB.
@@ -1449,7 +1445,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   })
 
   bitcoin_rpc.cmd(command_arr, function (raw_transaction_data, cb) {
-    console.log('received result from bitcoind, raw_transaction_data.txid = ', raw_transaction_data.txid)
+    // console.log('received result from bitcoind, raw_transaction_data.txid = ', raw_transaction_data.txid)
     var sql_query = []
     if (!raw_transaction_data) {
       console.log('Null transaction')
@@ -1458,17 +1454,14 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     raw_transaction_data = to_discrete(raw_transaction_data)
     console.time('parse_new_mempool_transaction time - ' + raw_transaction_data.txid)
     self.parse_new_mempool_transaction(raw_transaction_data, sql_query, emits, function (err, did_work, iosparsed, colored, ccparsed) {
-      // console.log('parse_new_mempool: parse_new_mempool_transaction ended ' + raw_transaction_data.txid + ' - did_work = ' + did_work + ', iosparsed = ' + iosparsed + ', colored = ' + colored + ', ccparsed = ', ccparsed)
       if (err) return cb(err)
-      if (iosparsed) {
-        // work may have been done in priority_parse in context pf API
-        new_mempool_txs.push({
-          txid: raw_transaction_data.txid,
-          iosparsed: iosparsed,
-          colored: colored,
-          ccparsed: ccparsed
-        })
-      }
+      // work may have been done in priority_parse in context of API
+      new_mempool_txs.push({
+        txid: raw_transaction_data.txid,
+        iosparsed: iosparsed,
+        colored: colored,
+        ccparsed: ccparsed
+      })
       if (!did_work) {
         return cb()
       }
@@ -1516,7 +1509,6 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       })
     }
     emits.forEach(function (emit) {
-      console.log('scanner.js (parse_mempool_cargo): ' + process.env.ROLE + ', emit: ' + emit[0] + ' : ' + emit[1].txid)
       self.emit(emit[0], emit[1])
     })
     callback()
@@ -1660,7 +1652,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           },
         cb)
       } else {
-        console.log('getting mempool from memory cache, self.mempool_txs = ', self.mempool_txs)
+        console.log('getting mempool from memory cache')
         self.mempool_txs.forEach(function (transaction) {
           if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
             db_parsed_txids.push(transaction.txid)
@@ -1715,7 +1707,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
 
 Scanner.prototype.remove_from_mempool_cache = function (txid) {
   var self = this
-  console.log('remove_from_mempool_cache, txid = ' + txid + ' start.')
   if (self.mempool_txs) {
     var mempool_tx_index = -1
     self.mempool_txs.forEach(function (mempool_tx, i) {
@@ -1724,7 +1715,6 @@ Scanner.prototype.remove_from_mempool_cache = function (txid) {
       }
     })
     if (~mempool_tx_index) {
-      console.log('remove_from_mempool_cache, txid = ' + txid + ' end.')
       self.mempool_txs.splice(mempool_tx_index, 1)
     }
   }
@@ -1869,7 +1859,7 @@ Scanner.prototype.transmit = function (txHex, callback) {
 /**
  * @param {object} key-value pairs for a table insert
  * @param {object} [options={}]
- * @param {object} [options.exclude] keys to exclude from the given object
+ * @param {object} [options.exclude] array of keys to exclude from the given object
  * @return {object} key-value pairs for a table insert
 */
 var to_sql_fields = function (obj, options) {
