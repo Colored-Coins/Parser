@@ -883,6 +883,7 @@ Scanner.prototype.parse_cc = function (err, callback) {
       var blocks_heights = []
       raw_block_datas.forEach(function (raw_block_data) {
         if (raw_block_data.txsparsed) {
+          raw_block_data.confirmations = properties.last_block - raw_block_data.blockheight + 1
           self.emit('newblock', raw_block_data)
           set_last_fully_parsed_block(raw_block_data.height)
           blocks_heights.push(raw_block_data.height)
@@ -1262,6 +1263,11 @@ Scanner.prototype.get_next_block_to_cc_parse = function (limit, callback) {
   var attributes = [
     'height',
     'hash',
+    'time',
+    'size',
+    'totalsent',
+    'fees',
+    'txlength',
     'txsparsed'
   ]
   this.Blocks.findAll({where: conditions, attributes: attributes, order: [['height', 'ASC']], limit: limit, raw: true})
