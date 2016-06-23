@@ -3,9 +3,9 @@
 var ColoredCoinsDataTypes = require('./coloredCoinsDataTypes')
 
 module.exports = function (sequelize, DataTypes) {
-  var AssetsAddresses = sequelize.define('assetsaddresses', {
-    assetId: {
-      type: ColoredCoinsDataTypes.ASSETID,
+  var AddressesOutputs = sequelize.define('addressesoutputs', {
+    output_id: {
+      type: DataTypes.BIGINT,
       primaryKey: true
     },
     address: {
@@ -16,12 +16,12 @@ module.exports = function (sequelize, DataTypes) {
   {
     classMethods: {
       associate: function (models) {
-        AssetsAddresses.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
+        AddressesOutputs.belongsTo(models.outputs, { foreignKey: 'output_id', as: 'output' })
       }
     },
     indexes: [
       {
-        fields: ['assetId']
+        fields: ['output_id']
       },
       {
         fields: ['address']
@@ -30,5 +30,5 @@ module.exports = function (sequelize, DataTypes) {
     timestamps: false
   })
 
-  return AssetsAddresses
+  return AddressesOutputs
 }

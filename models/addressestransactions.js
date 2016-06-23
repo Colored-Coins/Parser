@@ -1,21 +1,34 @@
-module.exports = function (mongoose) {
-  var AddressesTransactionsSchema = new mongoose.Schema({
-    address: { type: String, index: true },
-    txid: String,
-    updated: {type: Date, index: true}
-  })
+'use strict'
 
-  AddressesTransactionsSchema.pre('update', function () {
-    this.updated = new Date()
-  })
+var ColoredCoinsDataTypes = require('./coloredCoinsDataTypes')
 
-  AddressesTransactionsSchema.index({
-      address: 1,
-      txid: 1
+module.exports = function (sequelize, DataTypes) {
+  var AddressesTransactions = sequelize.define('addressestransactions', {
+    txid: {
+      type: ColoredCoinsDataTypes.HASH,
+      primaryKey: true
     },
-    {
-      unique: true
+    address: {
+      type: ColoredCoinsDataTypes.ADDRESS,
+      primaryKey: true
     }
-  )
-  return AddressesTransactionsSchema
+  },
+  {
+    classMethods: {
+      associate: function (models) {
+        AddressesTransactions.belongsTo(models.transactions, { foreignKey: 'txid', as: 'transaction' })
+      }
+    },
+    indexes: [
+      {
+        fields: ['txid']
+      },
+      {
+        fields: ['address']
+      }
+    ],
+    timestamps: false
+  })
+
+  return AddressesTransactions
 }

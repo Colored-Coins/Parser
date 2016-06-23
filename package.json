@@ -1,6 +1,6 @@
 {
   "name": "cc-block-parser",
-  "version": "0.4.4",
+  "version": "0.4.1",
   "description": "Parse the blockchain and build a Colored-Coins",
   "main": "scanner.js",
   "scripts": {
@@ -15,7 +15,11 @@
     },
     {
       "name": "bejavu",
-      "email": "tal@colu.co"
+      "email": "tal@colu.com"
+    },
+    {
+      "name": "Oded Leiba",
+      "email": "odedleiba5@gmail.com"
     }
   ],
   "license": "MIT",
@@ -25,7 +29,10 @@
     "cc-assetid-encoder": "^0.6.0",
     "cc-get-assets-outputs": "^1.0.0",
     "cc-transaction": "^1.0.0",
-    "lodash": "^3.10.1",
-    "mongoose": "~4.4.3"
+    "lodash": "^4.11.1",
+    "mongoose": "~4.4.3",
+    "sequelize": "^3.19.3",
+    "squel": "^5.0.3",
+    "nodejs-sql": "git+https://github.com/oleiba/nodejs-sql.git"
   }
 }

@@ -1,28 +1,45 @@
-module.exports = function (mongoose) {
-  var AssetsTransactionsSchema = new mongoose.Schema({
-    assetId: { type: String, index: true },
-    txid: String,
-    type: {type: String, index: true},
-    updated: {type: Date, index: true}
-  })
+'use strict'
 
-  AssetsTransactionsSchema.pre('update', function () {
-    this.updated = new Date()
-  })
+var ColoredCoinsDataTypes = require('./coloredCoinsDataTypes')
 
-  AssetsTransactionsSchema.index({
-      assetId: 1,
-      txid: 1
+module.exports = function (sequelize, DataTypes) {
+  var AssetsTransactions = sequelize.define('assetstransactions', {
+    assetId: {
+      type: ColoredCoinsDataTypes.ASSETID,
+      primaryKey: true
     },
-    {
-      unique: true
+    txid: {
+      type: ColoredCoinsDataTypes.HASH,
+      primaryKey: true
+    },
+    type: {
+      type: DataTypes.ENUM('issuance', 'transfer'),
+      allowNull: false
     }
-  )
+  },
+  {
+    classMethods: {
+      associate: function (models) {
+        AssetsTransactions.belongsTo(models.assets, { foreignKey: 'assetId', as: 'asset' })
+        AssetsTransactions.belongsTo(models.transactions, { foreignKey: 'txid', as: 'transaction' })
+      }
+    },
+    indexes: [
+      {
+        fields: ['assetId']
+      },
+      {
+        fields: ['txid']
+      },
+      {
+        fields: ['type']
+      },
+      {
+        fields: ['assetId', 'type']
+      }
+    ],
+    timestamps: false
+  })
 
-  AssetsTransactionsSchema.index({
-      assetId: 1,
-      type: 1
-    }
-  )
-  return AssetsTransactionsSchema
+  return AssetsTransactions
 }
