@@ -1486,11 +1486,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       if ('code' in err && err.code === -5) {
         console.error('Can\'t find tx.')
       } else {
-<<<<<<< HEAD
-        console.error('parse_mempool_cargo: ', err, JSON.stringify(err))
-=======
         console.error('parse_mempool_cargo: ', err)
->>>>>>> colu1.2
         return callback(err)
       }
     }
