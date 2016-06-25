@@ -49,6 +49,9 @@ module.exports = function (sequelize, DataTypes) {
       },
       {
         fields: ['txid', 'n', 'used']
+      },
+      {
+        fields: ['id', 'used']
       }
     ],
     timestamps: false

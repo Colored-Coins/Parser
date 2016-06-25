@@ -75,7 +75,7 @@ util.inherits(Scanner, events.EventEmitter)
 Scanner.prototype.scan_blocks = function (err) {
   var self = this
   if (err) {
-    console.error('scan_blocks: err = ', err, JSON.stringify(err))
+    console.error('scan_blocks: err = ', err)
     return self.scan_blocks()
   }
   var job
@@ -108,7 +108,6 @@ Scanner.prototype.scan_blocks = function (err) {
           self.parse_new_mempool(cb)
         }, 500)
       } else if (!raw_block_data.previousblockhash || raw_block_data.previousblockhash === last_hash) {
-        // logger.debug('parsing block')
         if (debug) {
           job = 'parse_new_block'
           console.time(job)
@@ -658,7 +657,11 @@ Scanner.prototype.scan_mempol_only = function (err) {
 Scanner.prototype.fix_blocks = function (err, callback) {
   var self = this
   if (err) {
+<<<<<<< HEAD
     console.error('fix_blocks: err = ', err, JSON.stringify(err))
+=======
+    console.error('fix_blocks: err = ', err)
+>>>>>>> colu1.2
     return self.fix_blocks(null, callback)
   }
   var emits = []
@@ -1487,7 +1490,11 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       if ('code' in err && err.code === -5) {
         console.error('Can\'t find tx.')
       } else {
+<<<<<<< HEAD
         console.error('parse_mempool_cargo: ', err, JSON.stringify(err))
+=======
+        console.error('parse_mempool_cargo: ', err)
+>>>>>>> colu1.2
         return callback(err)
       }
     }
