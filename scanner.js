@@ -657,11 +657,7 @@ Scanner.prototype.scan_mempol_only = function (err) {
 Scanner.prototype.fix_blocks = function (err, callback) {
   var self = this
   if (err) {
-<<<<<<< HEAD
-    console.error('fix_blocks: err = ', err, JSON.stringify(err))
-=======
     console.error('fix_blocks: err = ', err)
->>>>>>> colu1.2
     return self.fix_blocks(null, callback)
   }
   var emits = []
