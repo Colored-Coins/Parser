@@ -1415,11 +1415,18 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
           }
         }
         if (did_work) {
+          var update = {
+            iosparsed: raw_transaction_data.iosparsed,
+            ccparsed: raw_transaction_data.ccparsed,
+            tries: raw_transaction_data.tries || 0
+          }
+          if (raw_transaction_data.fee) update.fee = raw_transaction_data.fee
+          if (raw_transaction_data.totalsent) update.totalsent = raw_transaction_data.totalsent
           // put this query first because of outputs and inputs foreign key constraints, validate transaction in DB
           sql_query.unshift(squel.insert()
             .into('transactions')
             .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations', 'index_in_block']}))
-            .toString() + ' ON CONFLICT (txid) DO UPDATE SET ' + sql_builder.to_update_string({iosparsed: raw_transaction_data.iosparsed, ccparsed: raw_transaction_data.ccparsed}))
+            .toString() + ' ON CONFLICT (txid) DO UPDATE SET ' + sql_builder.to_update_string(update))
         }
         cb()
       }
