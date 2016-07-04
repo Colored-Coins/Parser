@@ -1795,7 +1795,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       console.time('priority_parse: get_from_bitcoind ' + txid)
       bitcoin_rpc.cmd('getrawtransaction', [txid, 1], function (err, raw_transaction_data) {
         if (err && err.code === -5) return cb(['tx ' + txid + ' not found.', 204])
-        cb(null, raw_transaction_data)
+        cb(err, raw_transaction_data)
       })
     },
     function (raw_transaction_data, cb) {
