@@ -237,7 +237,7 @@ Scanner.prototype.fix_mempool = function (callback) {
 
 Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
   var self = this
-  console.log('reverting tx ' + txid)
+  // console.log('reverting tx ' + txid)
   var find_transaction_query = '' +
     'SELECT\n' +
     '  transactions.colored,\n' +
@@ -1415,11 +1415,18 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
           }
         }
         if (did_work) {
+          var update = {
+            iosparsed: raw_transaction_data.iosparsed,
+            ccparsed: raw_transaction_data.ccparsed,
+            tries: raw_transaction_data.tries || 0
+          }
+          if (raw_transaction_data.fee) update.fee = raw_transaction_data.fee
+          if (raw_transaction_data.totalsent) update.totalsent = raw_transaction_data.totalsent
           // put this query first because of outputs and inputs foreign key constraints, validate transaction in DB
           sql_query.unshift(squel.insert()
             .into('transactions')
             .setFields(to_sql_fields(raw_transaction_data, {exclude: ['vin', 'vout', 'confirmations', 'index_in_block']}))
-            .toString() + ' ON CONFLICT (txid) DO UPDATE SET ' + sql_builder.to_update_string({iosparsed: raw_transaction_data.iosparsed, ccparsed: raw_transaction_data.ccparsed}))
+            .toString() + ' ON CONFLICT (txid) DO UPDATE SET ' + sql_builder.to_update_string(update))
         }
         cb()
       }
@@ -1456,7 +1463,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       return cb()
     }
     raw_transaction_data = to_discrete(raw_transaction_data)
-    console.time('parse_new_mempool_transaction time - ' + raw_transaction_data.txid)
+    // console.time('parse_new_mempool_transaction time - ' + raw_transaction_data.txid)
     self.parse_new_mempool_transaction(raw_transaction_data, sql_query, emits, function (err, did_work, iosparsed, colored, ccparsed) {
       if (err) return cb(err)
       // work may have been done in priority_parse in context of API
@@ -1474,7 +1481,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       self.sequelize.transaction(function (sql_transaction) {
         return self.sequelize.query(sql_query, {transaction: sql_transaction})
           .then(function () {
-            console.timeEnd('parse_new_mempool_transaction time - ' + raw_transaction_data.txid)
+            // console.timeEnd('parse_new_mempool_transaction time - ' + raw_transaction_data.txid)
             cb()
           })
           .catch(cb)
