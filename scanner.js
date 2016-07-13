@@ -1243,7 +1243,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   async.waterfall([
     function (cb) {
       // console.time('parse_new_mempool_transaction - #1 lookup in DB, txid = ' + raw_transaction_data.txid)
-      var find_transaction_query = get_find_transaction_query(this, 'WHERE txid = :txid ;')
+      var find_transaction_query = get_find_transaction_query(self, 'WHERE txid = :txid ;')
       self.sequelize.query(find_transaction_query, {replacements: {txid: raw_transaction_data.txid}, type: self.sequelize.QueryTypes.SELECT})
         .then(function (transactions) { cb(null, transactions[0]) })
         .catch(cb)
