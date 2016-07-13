@@ -1827,7 +1827,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       if (err === PARSED) {
         return end()
       }
-      end(err)
+      return end(err)
     }
     console.timeEnd('priority_parse: parse ' + txid)
     end()
