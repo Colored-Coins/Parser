@@ -1778,57 +1778,58 @@ Scanner.prototype.transmit = function (txHex, callback) {
 }
 
 var get_find_transaction_query = function (self, query_tail) {
-  'SELECT\n' +
-  '  ' + sql_builder.to_columns_of_model(self.Transactions, {exclude: ['hex']}) + ',\n' +
-  '  to_json(array(\n' +
-  '    SELECT\n' +
-  '      vin\n' +
-  '    FROM\n' +
-  '      (SELECT\n' +
-  '       inputs.*,\n' +
-  '       "previousOutput"."scriptPubKey" AS "previousOutput",\n' +
-  '       to_json(array(\n' +
-  '          SELECT\n' +
-  '            assets\n' +
-  '          FROM\n' +
-  '            (SELECT\n' +
-  '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
-  '              assets.*\n' +
-  '            FROM\n' +
-  '              assetsoutputs\n' +
-  '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
-  '            WHERE assetsoutputs.output_id = inputs.output_id ORDER BY index_in_output)\n' +
-  '        AS assets)) AS assets\n' +
-  '      FROM\n' +
-  '        inputs\n' +
-  '      LEFT OUTER JOIN\n' +
-  '        (SELECT outputs.id, outputs."scriptPubKey"\n' +
-  '         FROM outputs) AS "previousOutput" ON "previousOutput".id = inputs.output_id\n' +
-  '      WHERE\n' +
-  '        inputs.input_txid = transactions.txid\n' +
-  '      ORDER BY input_index) AS vin)) AS vin,\n' +
-  '  to_json(array(\n' +
-  '    SELECT\n' +
-  '      vout\n' +
-  '    FROM\n' +
-  '      (SELECT\n' +
-  '        outputs.*,\n' +
-  '        to_json(array(\n' +
-  '         SELECT assets FROM\n' +
-  '           (SELECT\n' +
-  '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
-  '              assets.*\n' +
-  '            FROM\n' +
-  '              assetsoutputs\n' +
-  '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
-  '            WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output)\n' +
-  '        AS assets)) AS assets\n' +
-  '      FROM\n' +
-  '        outputs\n' +
-  '      WHERE outputs.txid = transactions.txid\n' +
-  '      ORDER BY n) AS vout)) AS vout\n' +
-  'FROM\n' +
-  '  transactions\n' + query_tail
+  return '' +
+    'SELECT\n' +
+    '  ' + sql_builder.to_columns_of_model(self.Transactions, {exclude: ['hex']}) + ',\n' +
+    '  to_json(array(\n' +
+    '    SELECT\n' +
+    '      vin\n' +
+    '    FROM\n' +
+    '      (SELECT\n' +
+    '       inputs.*,\n' +
+    '       "previousOutput"."scriptPubKey" AS "previousOutput",\n' +
+    '       to_json(array(\n' +
+    '          SELECT\n' +
+    '            assets\n' +
+    '          FROM\n' +
+    '            (SELECT\n' +
+    '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
+    '              assets.*\n' +
+    '            FROM\n' +
+    '              assetsoutputs\n' +
+    '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
+    '            WHERE assetsoutputs.output_id = inputs.output_id ORDER BY index_in_output)\n' +
+    '        AS assets)) AS assets\n' +
+    '      FROM\n' +
+    '        inputs\n' +
+    '      LEFT OUTER JOIN\n' +
+    '        (SELECT outputs.id, outputs."scriptPubKey"\n' +
+    '         FROM outputs) AS "previousOutput" ON "previousOutput".id = inputs.output_id\n' +
+    '      WHERE\n' +
+    '        inputs.input_txid = transactions.txid\n' +
+    '      ORDER BY input_index) AS vin)) AS vin,\n' +
+    '  to_json(array(\n' +
+    '    SELECT\n' +
+    '      vout\n' +
+    '    FROM\n' +
+    '      (SELECT\n' +
+    '        outputs.*,\n' +
+    '        to_json(array(\n' +
+    '         SELECT assets FROM\n' +
+    '           (SELECT\n' +
+    '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
+    '              assets.*\n' +
+    '            FROM\n' +
+    '              assetsoutputs\n' +
+    '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
+    '            WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output)\n' +
+    '        AS assets)) AS assets\n' +
+    '      FROM\n' +
+    '        outputs\n' +
+    '      WHERE outputs.txid = transactions.txid\n' +
+    '      ORDER BY n) AS vout)) AS vout\n' +
+    'FROM\n' +
+    '  transactions\n' + query_tail
 }
 
 /**
