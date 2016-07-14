@@ -1076,7 +1076,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
         var input
         if (in_transaction.txid + ':' + output.n in inputs_to_fix) {
           input = inputs_to_fix[in_transaction.txid + ':' + output.n]
-          input.previousOutput = output
+          input.previousOutput = output.scriptPubKey
           input.value = output.value
           input.output_id = output.id
           input.assets = output.assets
