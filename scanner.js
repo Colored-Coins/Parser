@@ -957,10 +957,7 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
 
   var assetsArrays = get_assets_outputs(transaction_data)
   assetsArrays.forEach(function (assetsArray, out_index) {
-    if (!assetsArray || !assetsArray.length) {
-      return
-    }
-
+    assetsArray = assetsArray || []
     transaction_data.vout[out_index].assets = assetsArray
     assetsArray.forEach(function (asset, index_in_output) {
       var type = null
