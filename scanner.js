@@ -1029,7 +1029,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     blockheight: {$between: [first_block, last_block]}
   }
   console.time('get_need_to_fix_transactions_by_blocks')
-  var query = get_fix_transactions_update_query(this,
+  var query = get_find_transaction_query(this,
     'WHERE\n' +
     '  transactions.iosparsed = FALSE AND\n' +
     '  transactions.blockheight BETWEEN ' + first_block + ' AND ' + last_block + '\n' +
