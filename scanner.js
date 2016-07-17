@@ -717,7 +717,6 @@ Scanner.prototype.fix_blocks = function (err, callback) {
       if (!transactions_datas.length) {
         return close_blocks(null, true)
       }
-      transactions_datas = transactions_datas.map(function (tx) { return tx.toJSON() })
       console.time('fix_transactions')
       console.time('fix_transactions - each')
       var bulk_outputs_ids = []
