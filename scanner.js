@@ -957,10 +957,7 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
 
   var assetsArrays = get_assets_outputs(transaction_data)
   assetsArrays.forEach(function (assetsArray, out_index) {
-    if (!assetsArray || !assetsArray.length) {
-      return
-    }
-
+    assetsArray = assetsArray || []
     transaction_data.vout[out_index].assets = assetsArray
     assetsArray.forEach(function (asset, index_in_output) {
       var type = null
@@ -1006,49 +1003,15 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, sql_query) {
 
 Scanner.prototype.get_need_to_cc_parse_transactions_by_blocks = function (first_block, last_block, callback) {
   console.log('get_need_to_cc_parse_transactions_by_blocks for blocks ' + first_block + '-' + last_block)
-  var query = [
-    'SELECT',
-    '  transactions.txid,',
-    '  transactions.iosparsed,',
-    '  transactions.ccdata,',
-    '  transactions.overflow,',
-    '  to_json(array(',
-    '    SELECT vin FROM',
-    '      (SELECT',
-    '        inputs.*,',
-    '        to_json(array(',
-    '          SELECT assets FROM',
-    '            (SELECT',
-    '              assetsoutputs.*, assets.*',
-    '            FROM assetsoutputs INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId" WHERE assetsoutputs.output_id = inputs.output_id ORDER BY index_in_output) assets)) assets',
-    '    FROM',
-    '      inputs',
-    '    WHERE inputs.input_txid = transactions.txid',
-    '    ORDER BY input_index) vin)) vin,',
-    '  to_json(array(',
-    '    SELECT vout FROM',
-    '      (SELECT',
-    '        outputs.*,',
-    '        to_json(array(SELECT assets FROM',
-    '          (SELECT',
-    '            assetsoutputs.*, assets.*',
-    '          FROM assetsoutputs INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId" WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output) assets)) assets',
-    '    FROM',
-    '      outputs',
-    '    WHERE outputs.txid = transactions.txid',
-    '    ORDER BY n) vout)) vout',
-    'FROM',
-    '  transactions',
-    'WHERE',
-    '  ccparsed = false AND',
-    '  colored = true AND',
-    '  blockheight BETWEEN ' + first_block + ' AND ' + last_block,
-    'ORDER BY',
-    '  blockheight ASC,',
-    '  index_in_block ASC',
-    'LIMIT 1000;'
-  ]
-  query = query.join('\n')
+  var query = get_find_transaction_query(this,
+    'WHERE\n' +
+    '  ccparsed = FALSE AND\n' +
+    '  colored = TRUE AND\n' +
+    '  blockheight BETWEEN ' + first_block + ' AND ' + last_block + '\n' +
+    'ORDER BY\n' +
+    '  blockheight ASC,\n' +
+    '  index_in_block ASC\n' +
+    'LIMIT 1000;')
   this.sequelize.query(query, {type: this.sequelize.QueryTypes.SELECT})
     .then(function (transactions) {
       console.log('get_need_to_cc_parse_transactions_by_blocks - transactions.length = ', transactions.length)
@@ -1066,26 +1029,24 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     blockheight: {$between: [first_block, last_block]}
   }
   console.time('get_need_to_fix_transactions_by_blocks')
-  this.Transactions.findAll({
-    where: conditions,
-    limit: 200,
-    attributes: ['txid', 'blockheight', 'tries', 'colored'],
-    include: [
-      { model: this.Inputs, separate: true, as: 'vin', attributes: {exclude: ['scriptSig']}, order: [['input_index', 'ASC']] },
-      { model: this.Outputs, separate: true, as: 'vout', attributes: {exclude: ['scriptPubKey']}, order: [['n', 'ASC']] }
-    ],
-    order: [
-      ['blockheight', 'ASC'],
-      ['index_in_block', 'ASC']
-    ]
-  }).then(function (transactions) {
-    console.timeEnd('get_need_to_fix_transactions_by_blocks')
-    console.log('get_need_to_fix_transactions_by_blocks #1 - transactions.length = ', transactions.length)
-    callback(null, transactions)
-  }).catch(function (e) {
-    console.log('get_need_to_fix_transactions_by_blocks - e = ', e)
-    callback(e)
-  })
+  var query = get_fix_transactions_update_query(this,
+    'WHERE\n' +
+    '  transactions.iosparsed = FALSE AND\n' +
+    '  transactions.blockheight BETWEEN ' + first_block + ' AND ' + last_block + '\n' +
+    'ORDER BY\n' +
+    '  transactions.blockheight ASC\n' +
+    '  transactions.index_in_block ASC\n' +
+    'LIMIT 200;')
+  this.sequelize.query(query, {type: this.sequelize.QueryTypes.SELECT})
+    .then(function (transactions) {
+      console.timeEnd('get_need_to_fix_transactions_by_blocks')
+      console.log('get_need_to_fix_transactions_by_blocks #1 - transactions.length = ', transactions.length)
+      callback(null, transactions)
+    })
+    .catch(function (e) {
+      console.log('get_need_to_fix_transactions_by_blocks - e = ', e)
+      callback(e)
+    })
 }
 
 Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_outputs_ids, bulk_inputs, callback) {
@@ -1112,6 +1073,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
         var input
         if (in_transaction.txid + ':' + output.n in inputs_to_fix) {
           input = inputs_to_fix[in_transaction.txid + ':' + output.n]
+          input.previousOutput = output.scriptPubKey
           input.value = output.value
           input.output_id = output.id
           input.assets = output.assets
@@ -1168,10 +1130,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
   if (raw_transaction_data.colored) {
     find_vin_transactions_query = '' +
       'SELECT\n' +
-      '  outputs.txid,\n' +
-      '  outputs.n,\n' +
-      '  outputs.id,\n' +
-      '  outputs.value,\n' +
+      '  outputs.*,\n' +
       '  to_json(array(\n' +
       '    SELECT assets FROM\n' +
       '      (SELECT\n' +
@@ -1188,10 +1147,7 @@ Scanner.prototype.fix_vin = function (raw_transaction_data, blockheight, bulk_ou
   } else {
     find_vin_transactions_query = '' +
       'SELECT\n' +
-      '  outputs.txid,\n' +
-      '  outputs.n,\n' +
-      '  outputs.id,\n' +
-      '  outputs.value\n' +
+      '  outputs.*\n' +
       'FROM outputs\n' +
       'WHERE ' + outputs_conditions + ';'
   }
@@ -1284,56 +1240,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   async.waterfall([
     function (cb) {
       // console.time('parse_new_mempool_transaction - #1 lookup in DB, txid = ' + raw_transaction_data.txid)
-      var find_transaction_query = '' +
-        'SELECT\n' +
-        '  ' + sql_builder.to_columns_of_model(self.Transactions, {exclude: ['hex']}) + ',\n' +
-        '  to_json(array(\n' +
-        '    SELECT\n' +
-        '      vin\n' +
-        '    FROM\n' +
-        '      (SELECT\n' +
-        '       inputs.*,\n' +
-        '       to_json(array(\n' +
-        '          SELECT\n' +
-        '            assets\n' +
-        '          FROM\n' +
-        '            (SELECT\n' +
-        '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
-        '              assets.*\n' +
-        '            FROM\n' +
-        '              assetsoutputs\n' +
-        '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
-        '            WHERE assetsoutputs.output_id = inputs.output_id ORDER BY index_in_output)\n' +
-        '        AS assets)) AS assets\n' +
-        '      FROM\n' +
-        '        inputs\n' +
-        '      WHERE\n' +
-        '        inputs.input_txid = transactions.txid\n' +
-        '      ORDER BY input_index) AS vin)) AS vin,\n' +
-        '  to_json(array(\n' +
-        '    SELECT\n' +
-        '      vout\n' +
-        '    FROM\n' +
-        '      (SELECT\n' +
-        '        outputs.*,\n' +
-        '        to_json(array(\n' +
-        '         SELECT assets FROM\n' +
-        '           (SELECT\n' +
-        '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
-        '              assets.*\n' +
-        '            FROM\n' +
-        '              assetsoutputs\n' +
-        '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
-        '            WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output)\n' +
-        '        AS assets)) AS assets\n' +
-        '      FROM\n' +
-        '        outputs\n' +
-        '      WHERE outputs.txid = transactions.txid\n' +
-        '      ORDER BY n) AS vout)) AS vout\n' +
-        'FROM\n' +
-        '  transactions\n' +
-        'WHERE\n' +
-        '  txid = :txid;'
+      var find_transaction_query = get_find_transaction_query(self, 'WHERE txid = :txid ;')
       self.sequelize.query(find_transaction_query, {replacements: {txid: raw_transaction_data.txid}, type: self.sequelize.QueryTypes.SELECT})
         .then(function (transactions) { cb(null, transactions[0]) })
         .catch(cb)
@@ -1802,7 +1709,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       console.time('priority_parse: get_from_bitcoind ' + txid)
       bitcoin_rpc.cmd('getrawtransaction', [txid, 1], function (err, raw_transaction_data) {
         if (err && err.code === -5) return cb(['tx ' + txid + ' not found.', 204])
-        cb(null, raw_transaction_data)
+        cb(err, raw_transaction_data)
       })
     },
     function (raw_transaction_data, cb) {
@@ -1827,7 +1734,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       if (err === PARSED) {
         return end()
       }
-      end(err)
+      return end(err)
     }
     console.timeEnd('priority_parse: parse ' + txid)
     end()
@@ -1865,6 +1772,61 @@ Scanner.prototype.transmit = function (txHex, callback) {
       return callback(null, {txid: txid})
     })
   })
+}
+
+var get_find_transaction_query = function (self, query_tail) {
+  return '' +
+    'SELECT\n' +
+    '  ' + sql_builder.to_columns_of_model(self.Transactions, {exclude: ['hex']}) + ',\n' +
+    '  to_json(array(\n' +
+    '    SELECT\n' +
+    '      vin\n' +
+    '    FROM\n' +
+    '      (SELECT\n' +
+    '       inputs.*,\n' +
+    '       "previousOutput"."scriptPubKey" AS "previousOutput",\n' +
+    '       to_json(array(\n' +
+    '          SELECT\n' +
+    '            assets\n' +
+    '          FROM\n' +
+    '            (SELECT\n' +
+    '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
+    '              assets.*\n' +
+    '            FROM\n' +
+    '              assetsoutputs\n' +
+    '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
+    '            WHERE assetsoutputs.output_id = inputs.output_id ORDER BY index_in_output)\n' +
+    '        AS assets)) AS assets\n' +
+    '      FROM\n' +
+    '        inputs\n' +
+    '      LEFT OUTER JOIN\n' +
+    '        (SELECT outputs.id, outputs."scriptPubKey"\n' +
+    '         FROM outputs) AS "previousOutput" ON "previousOutput".id = inputs.output_id\n' +
+    '      WHERE\n' +
+    '        inputs.input_txid = transactions.txid\n' +
+    '      ORDER BY input_index) AS vin)) AS vin,\n' +
+    '  to_json(array(\n' +
+    '    SELECT\n' +
+    '      vout\n' +
+    '    FROM\n' +
+    '      (SELECT\n' +
+    '        outputs.*,\n' +
+    '        to_json(array(\n' +
+    '         SELECT assets FROM\n' +
+    '           (SELECT\n' +
+    '              assetsoutputs."assetId", assetsoutputs."amount", assetsoutputs."issueTxid",\n' +
+    '              assets.*\n' +
+    '            FROM\n' +
+    '              assetsoutputs\n' +
+    '            INNER JOIN assets ON assets."assetId" = assetsoutputs."assetId"\n' +
+    '            WHERE assetsoutputs.output_id = outputs.id ORDER BY index_in_output)\n' +
+    '        AS assets)) AS assets\n' +
+    '      FROM\n' +
+    '        outputs\n' +
+    '      WHERE outputs.txid = transactions.txid\n' +
+    '      ORDER BY n) AS vout)) AS vout\n' +
+    'FROM\n' +
+    '  transactions\n' + query_tail
 }
 
 /**
