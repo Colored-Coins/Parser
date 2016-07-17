@@ -1034,7 +1034,7 @@ Scanner.prototype.get_need_to_fix_transactions_by_blocks = function (first_block
     '  transactions.iosparsed = FALSE AND\n' +
     '  transactions.blockheight BETWEEN ' + first_block + ' AND ' + last_block + '\n' +
     'ORDER BY\n' +
-    '  transactions.blockheight ASC\n' +
+    '  transactions.blockheight ASC,\n' +
     '  transactions.index_in_block ASC\n' +
     'LIMIT 200;')
   this.sequelize.query(query, {type: this.sequelize.QueryTypes.SELECT})
