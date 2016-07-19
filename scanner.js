@@ -1481,18 +1481,26 @@ Scanner.prototype.revert_txids = function (callback) {
       function (err, revert_flags_txids) {
         if (err) return callback(err)
         revert_flags_txids = [].concat.apply([], revert_flags_txids)
-        revert_flags_txids = _.uniq(revert_flags_txids)
+        revert_flags_txids = _(revert_flags_txids).uniq().filter(function (txid) { return txid }).value()
         console.log('revert flags txids:', revert_flags_txids)
         if (!revert_flags_txids.length) return callback()
 
-        var sql_query = squel.update()
+        var sql_query = [
+          squel.update()
           .table('transactions')
           .set('iosparsed', false)
           .set('ccparsed', false)
           .where('txid IN ?', revert_flags_txids)
-          .toString() + ';'
-
-        return self.sequelize.query(sql_query)
+          .toString(),
+          squel.update()
+          .table('inputs')
+          .set('output_id', null)
+          .where('input_txid IN ?', revert_flags_txids)
+          .toString()
+        ]
+        sql_query = sql_query.join(';\n')
+        self.sequelize.transaction(function (sql_transaction) {
+          return self.sequelize.query(sql_query, {transaction: sql_transaction})
           .then(function () {
             regular_txids.forEach(function (txid) {
               self.emit('revertedtransaction', {txid: txid})
@@ -1504,6 +1512,7 @@ Scanner.prototype.revert_txids = function (callback) {
             callback()
           })
           .catch(callback)
+        })
       })
   //   },
   //   callback
