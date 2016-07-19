@@ -187,13 +187,14 @@ Scanner.prototype.revert_block = function (block_height, callback) {
         revert_flags_txids = _(revert_flags_txids).uniq().filter(function (txid) { return txid }).value()
         console.log('revert flags txids:', revert_flags_txids)
         if (revert_flags_txids.length) {
-          sql_query.push(squel.update()
+          // put these 2 updates first. Otherwise delete queries will make it unrecoverable.
+          sql_query.unshift(squel.update()
             .table('transactions')
             .set('iosparsed', false)
             .set('ccparsed', false)
             .where('txid IN ?', revert_flags_txids)
             .toString())
-          sql_query.push(squel.update()
+          sql_query.unshift(squel.update()
             .table('inputs')
             .set('output_id', null)
             .where('input_txid IN ?', revert_flags_txids)
@@ -1452,21 +1453,17 @@ Scanner.prototype.revert_txids = function (callback) {
       // logger.debug('reverting '+block_data.tx.length+' txs.')
       var regular_txids = []
       var colored_txids = []
-
+      var sql_query = []
       async.map(txids, function (txid, cb) {
         bitcoin_rpc.cmd('getrawtransaction', [txid], function (err, raw_transaction_data) {
           if (err || !raw_transaction_data || !raw_transaction_data.confirmations) {
             regular_txids.push(txid)
-            var sql_query = []
             self.revert_tx(txid, sql_query, function (err, colored, revert_flags_txids) {
               if (err) return cb(err)
               if (colored) {
                 colored_txids.push(txid)
               }
-              sql_query = sql_query.join(';\n')
-              return self.sequelize.query(sql_query)
-                .then(function () { cb(null, revert_flags_txids) })
-                .catch(cb)
+              cb(null, revert_flags_txids)
             })
           } else {
             console.log('found tx that do not need to revert', txid)
@@ -1488,24 +1485,22 @@ Scanner.prototype.revert_txids = function (callback) {
         revert_flags_txids = [].concat.apply([], revert_flags_txids)
         revert_flags_txids = _(revert_flags_txids).uniq().filter(function (txid) { return txid }).value()
         console.log('revert flags txids:', revert_flags_txids)
-        if (!revert_flags_txids.length) return callback()
-
-        var sql_query = [
-          squel.update()
-          .table('transactions')
-          .set('iosparsed', false)
-          .set('ccparsed', false)
-          .where('txid IN ?', revert_flags_txids)
-          .toString(),
-          squel.update()
-          .table('inputs')
-          .set('output_id', null)
-          .where('input_txid IN ?', revert_flags_txids)
-          .toString()
-        ]
+        if (revert_flags_txids.length) {
+          // put these 2 updates first. Otherwise delete queries will make it unrecoverable.
+          sql_query.unshift(squel.update()
+            .table('transactions')
+            .set('iosparsed', false)
+            .set('ccparsed', false)
+            .where('txid IN ?', revert_flags_txids)
+            .toString())
+          sql_query.unshift(squel.update()
+            .table('inputs')
+            .set('output_id', null)
+            .where('input_txid IN ?', revert_flags_txids)
+            .toString())
+        }
         sql_query = sql_query.join(';\n')
-        self.sequelize.transaction(function (sql_transaction) {
-          return self.sequelize.query(sql_query, {transaction: sql_transaction})
+        self.sequelize.query(sql_query)
           .then(function () {
             regular_txids.forEach(function (txid) {
               self.emit('revertedtransaction', {txid: txid})
@@ -1517,7 +1512,6 @@ Scanner.prototype.revert_txids = function (callback) {
             callback()
           })
           .catch(callback)
-        })
       })
   //   },
   //   callback
