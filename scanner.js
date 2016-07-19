@@ -184,7 +184,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
       function (err, revert_flags_txids) {
         if (err) return callback(err)
         revert_flags_txids = [].concat.apply([], revert_flags_txids)
-        revert_flags_txids = _.uniq(revert_flags_txids)
+        revert_flags_txids = _(revert_flags_txids).uniq().filter(function (txid) { return txid }).value()
         console.log('revert flags txids:', revert_flags_txids)
         if (revert_flags_txids.length) {
           sql_query.push(squel.update()
@@ -192,6 +192,11 @@ Scanner.prototype.revert_block = function (block_height, callback) {
             .set('iosparsed', false)
             .set('ccparsed', false)
             .where('txid IN ?', revert_flags_txids)
+            .toString())
+          sql_query.push(squel.update()
+            .table('inputs')
+            .set('output_id', null)
+            .where('input_txid IN ?', revert_flags_txids)
             .toString())
         }
         // logger.debug('executing bulks')
