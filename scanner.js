@@ -278,7 +278,7 @@ Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
   self.sequelize.query(find_transaction_query, {replacements: {txid: txid}, type: self.sequelize.QueryTypes.SELECT})
     .then(function (transactions) {
       if (!transactions || !transactions.length) {
-        console.log('revert_tx: txid ' + txid + ', transactions && transactions.length = ' + transactions && transactions.length)
+        console.log('revert_tx: txid ' + txid + ', transactions && transactions.length = ' + (transactions && transactions.length))
         return callback()
       }
       var next_txids = []
@@ -1631,9 +1631,11 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       self.mempool_cargo.push(new_txids, function () {
         if (!--cargo_size) {
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
+          console.log('parse_new_mempool: db_txids  = ', db_txids)
           self.to_revert = self.to_revert.concat(db_txids)
-          console.log('parse_new_mempool: self.to_revert = ', self.to_revert)
+          console.log('parse_new_mempool: self.to_revert #1 = ', self.to_revert)
           db_txids.forEach(self.remove_from_mempool_cache)
+          console.log('parse_new_mempool: self.to_revert #2 = ', self.to_revert)
           end_func()
         }
       })
@@ -1642,18 +1644,12 @@ Scanner.prototype.parse_new_mempool = function (callback) {
 }
 
 Scanner.prototype.remove_from_mempool_cache = function (txid) {
-  var self = this
-  if (self.mempool_txs) {
-    var mempool_tx_index = -1
-    self.mempool_txs.forEach(function (mempool_tx, i) {
-      if (!~mempool_tx_index && mempool_tx.txid === txid) {
-        mempool_tx_index = i
-      }
-    })
-    if (~mempool_tx_index) {
-      self.mempool_txs.splice(mempool_tx_index, 1)
-    }
+  if (!this.mempool_txs || !this.mempool_txs.length) {
+    return
   }
+  _.remove(this.mempool_txs, function (tx) {
+    return tx.txid === txid
+  })
 }
 
 Scanner.prototype.wait_for_parse = function (txid, callback) {
