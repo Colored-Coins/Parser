@@ -1484,7 +1484,7 @@ Scanner.prototype.revert_txids = function (callback) {
         if (err) return callback(err)
         revert_flags_txids = [].concat.apply([], revert_flags_txids)
         revert_flags_txids = _(revert_flags_txids).uniq().filter(function (txid) { return txid }).value()
-        console.log('revert flags txids:', revert_flags_txids)
+        console.log('revert flags txids:', revert_flags_txids, 'sql_query.length = ', sql_query.length)
         if (revert_flags_txids.length) {
           // put these 2 updates first. Otherwise delete queries will make it unrecoverable.
           sql_query.unshift(squel.update()
@@ -1500,7 +1500,7 @@ Scanner.prototype.revert_txids = function (callback) {
             .toString())
         }
         sql_query = sql_query.join(';\n')
-        self.sequelize.query(sql_query)
+        self.sequelize.query(sql_query, {logging: console.log, benchmark: true})
           .then(function () {
             regular_txids.forEach(function (txid) {
               self.emit('revertedtransaction', {txid: txid})
