@@ -1589,6 +1589,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       } else {
         console.log('getting mempool from memory cache')
         console.log('parse_new_mempool: self.mempool_txs = ', self.mempool_txs.map(function (tx) { return tx.txid }))
+        console.log('parse_new_mempool: db_unparsed_txids #0 = ', db_unparsed_txids)
         self.mempool_txs.forEach(function (transaction) {
           if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
             db_parsed_txids.push(transaction.txid)
