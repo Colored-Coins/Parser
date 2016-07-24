@@ -277,7 +277,10 @@ Scanner.prototype.revert_tx = function (txid, sql_query, callback) {
     '  txid = :txid'
   self.sequelize.query(find_transaction_query, {replacements: {txid: txid}, type: self.sequelize.QueryTypes.SELECT})
     .then(function (transactions) {
-      if (!transactions || !transactions.length) return callback()
+      if (!transactions || !transactions.length) {
+        console.log('revert_tx: txid ' + txid + ', transactions && transactions.length = ' + transactions && transactions.length)
+        return callback()
+      }
       var next_txids = []
       var transaction = transactions[0]
       self.revert_vin(txid, transaction.vin, sql_query)
@@ -1444,7 +1447,7 @@ Scanner.prototype.revert_txids = function (callback) {
   self.to_revert = _.uniq(self.to_revert)
   if (!self.to_revert.length) return callback()
   console.log('need to revert ' + self.to_revert.length + ' txs from mempool.')
-  var n_batch = 100
+  var n_batch = 1
   // async.whilst(function () { return self.to_revert.length },
     // function (cb) {
       var txids = self.to_revert.slice(0, n_batch)
@@ -1457,6 +1460,13 @@ Scanner.prototype.revert_txids = function (callback) {
       async.map(txids, function (txid, cb) {
         bitcoin_rpc.cmd('getrawtransaction', [txid], function (err, raw_transaction_data) {
           if (err || !raw_transaction_data || !raw_transaction_data.confirmations) {
+            if (err) {
+              console.log('txid ' + txid + ' received err = ', err)
+            } else if (!raw_transaction_data) {
+              console.log('txid ' + txid + ' !raw_transaction_data')
+            } else {
+              console.log('txid ' + txid + ' raw_transaction_data.confirmations = ' + raw_transaction_data.confirmations)
+            }
             regular_txids.push(txid)
             self.revert_tx(txid, sql_query, function (err, colored, revert_flags_txids) {
               if (err) return cb(err)
@@ -1622,6 +1632,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         if (!--cargo_size) {
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
           self.to_revert = self.to_revert.concat(db_txids)
+          console.log('parse_new_mempool: self.to_revert = ', self.to_revert)
           db_txids.forEach(self.remove_from_mempool_cache)
           end_func()
         }
