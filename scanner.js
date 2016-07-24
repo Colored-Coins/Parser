@@ -1588,7 +1588,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         cb)
       } else {
         console.log('getting mempool from memory cache')
-        console.log('parse_new_mempool: self.mempool_txs pre = ', self.mempool_txs)
+        console.log('parse_new_mempool: self.mempool_txs = ', self.mempool_txs.map(function (tx) { return tx.txid }))
         self.mempool_txs.forEach(function (transaction) {
           if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
             db_parsed_txids.push(transaction.txid)
@@ -1596,7 +1596,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
             db_unparsed_txids.push(transaction.txid)
           }
         })
-        console.log('parse_new_mempool: self.mempool_txs post = ', self.mempool_txs)
         cb()
       }
     },
@@ -1632,8 +1631,10 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       self.once('kill', end_func)
       self.mempool_cargo.push(new_txids, function () {
         if (!--cargo_size) {
+          console.log('parse_new_mempool: db_parsed_txids = ', db_parsed_txids)
+          console.log('parse_new_mempool: db_unparsed_txids = ', db_unparsed_txids)
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
-          console.log('parse_new_mempool: db_txids  = ', db_txids)
+          console.log('parse_new_mempool: db_txids = ', db_txids)
           self.to_revert = self.to_revert.concat(db_txids)
           console.log('parse_new_mempool: self.to_revert = ', self.to_revert)
           console.log('parse_new_mempool: self.mempool_txs #1 = ', self.mempool_txs)
