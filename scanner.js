@@ -47,7 +47,6 @@ function Scanner (settings, db) {
       process.send({to: properties.roles.API, newtransaction: newtransaction})
     })
     self.on('newcctransaction', function (newcctransaction) {
-      console.log('scanner.js: ' + process.env.ROLE + ' newcctransaction ', newcctransaction)
       process.send({to: properties.roles.API, newcctransaction: newcctransaction})
     })
     self.on('revertedblock', function (revertedblock) {
@@ -1588,8 +1587,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         cb)
       } else {
         console.log('getting mempool from memory cache')
-        console.log('parse_new_mempool: self.mempool_txs = ', self.mempool_txs.map(function (tx) { return tx.txid }))
-        console.log('parse_new_mempool: db_unparsed_txids #0 = ', db_unparsed_txids)
         self.mempool_txs.forEach(function (transaction) {
           if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
             db_parsed_txids.push(transaction.txid)
@@ -1634,29 +1631,18 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       self.once('kill', end_func)
       self.mempool_cargo.push(new_txids, function () {
         if (!--cargo_size) {
-          console.log('parse_new_mempool: db_parsed_txids = ', db_parsed_txids)
-          console.log('parse_new_mempool: db_unparsed_txids #3 = ', db_unparsed_txids)
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
-          console.log('parse_new_mempool: db_txids = ', db_txids)
           self.to_revert = self.to_revert.concat(db_txids)
-          console.log('parse_new_mempool: self.to_revert = ', self.to_revert)
-          console.log('parse_new_mempool: self.mempool_txs #1 = ', self.mempool_txs.map(function (tx) { return tx.txid }))
-          db_txids.forEach(self.remove_from_mempool_cache)
-          console.log('parse_new_mempool: self.mempool_txs #2 = ', self.mempool_txs.map(function (tx) { return tx.txid }))
+          console.log('parse_mempool_cargo #1: this.mempool_txs.length =', (this.mempool_txs && this.mempool_txs.length), ', db_txids.length =', (db_txids && db_txids.length))
+          _.pullAllWith(this.mempool_txs, db_txids, function (tx, txid) {
+            return tx.txid === txid
+          })
+          console.log('parse_mempool_cargo #2: this.mempool_txs.length =', (this.mempool_txs && this.mempool_txs.length), ', db_txids.length =', (db_txids && db_txids.length))
           end_func()
         }
       })
     }
   ], callback)
-}
-
-Scanner.prototype.remove_from_mempool_cache = function (txid) {
-  if (!this.mempool_txs || !this.mempool_txs.length) {
-    return
-  }
-  _.remove(this.mempool_txs, function (tx) {
-    return tx.txid === txid
-  })
 }
 
 Scanner.prototype.wait_for_parse = function (txid, callback) {
