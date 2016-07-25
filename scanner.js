@@ -1446,7 +1446,7 @@ Scanner.prototype.revert_txids = function (callback) {
   self.to_revert = _.uniq(self.to_revert)
   if (!self.to_revert.length) return callback()
   console.log('need to revert ' + self.to_revert.length + ' txs from mempool.')
-  var n_batch = 1
+  var n_batch = 100
   // async.whilst(function () { return self.to_revert.length },
     // function (cb) {
       var txids = self.to_revert.slice(0, n_batch)
@@ -1594,7 +1594,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
             db_unparsed_txids.push(transaction.txid)
           }
         })
-        console.log('parse_new_mempool: db_unparsed_txids #1 = ', db_unparsed_txids)
         cb()
       }
     },
@@ -1615,7 +1614,6 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       db_parsed_txids = _.xor(txids_intersection, db_parsed_txids) // the rest of the txids in the db (not yet found in mempool)
       txids_intersection = _.intersection(db_unparsed_txids, whole_txids) // txids that in mempool and db but not fully parsed
       db_unparsed_txids = _.xor(txids_intersection, db_unparsed_txids) // the rest of the txids in the db (not yet found in mempool, not fully parsed)
-      console.log('parse_new_mempool: db_unparsed_txids #2 = ', db_unparsed_txids)
       console.log('end xoring')
       new_txids.push('PH')
       console.log('parsing new mempool txs (' + (new_txids.length - 1) + ')')
@@ -1633,11 +1631,9 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         if (!--cargo_size) {
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
           self.to_revert = self.to_revert.concat(db_txids)
-          console.log('parse_mempool_cargo #1: self.mempool_txs.length =', (self.mempool_txs && self.mempool_txs.length), ', db_txids.length =', (db_txids && db_txids.length))
           _.pullAllWith(self.mempool_txs, db_txids, function (tx, txid) {
             return tx.txid === txid
           })
-          console.log('parse_mempool_cargo #2: self.mempool_txs.length =', (self.mempool_txs && self.mempool_txs.length), ', db_txids.length =', (db_txids && db_txids.length))
           end_func()
         }
       })
