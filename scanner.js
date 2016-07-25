@@ -1633,11 +1633,11 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         if (!--cargo_size) {
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
           self.to_revert = self.to_revert.concat(db_txids)
-          console.log('parse_mempool_cargo #1: this.mempool_txs.length =', (this.mempool_txs && this.mempool_txs.length), ', db_txids.length =', (db_txids && db_txids.length))
-          _.pullAllWith(this.mempool_txs, db_txids, function (tx, txid) {
+          console.log('parse_mempool_cargo #1: self.mempool_txs.length =', (self.mempool_txs && self.mempool_txs.length), ', db_txids.length =', (db_txids && db_txids.length))
+          _.pullAllWith(self.mempool_txs, db_txids, function (tx, txid) {
             return tx.txid === txid
           })
-          console.log('parse_mempool_cargo #2: this.mempool_txs.length =', (this.mempool_txs && this.mempool_txs.length), ', db_txids.length =', (db_txids && db_txids.length))
+          console.log('parse_mempool_cargo #2: self.mempool_txs.length =', (self.mempool_txs && self.mempool_txs.length), ', db_txids.length =', (db_txids && db_txids.length))
           end_func()
         }
       })
