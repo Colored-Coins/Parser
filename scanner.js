@@ -430,23 +430,13 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
   raw_block_data.txlength = raw_block_data.tx.length
   console.log('parsing new block ' + raw_block_data.height)
 
-  var command_arr = []
-
   self.to_revert = []
-  raw_block_data.tx.forEach(function (txhash) {
-    if (self.mempool_txs) {
-      var mempool_tx_index = -1
-      self.mempool_txs.forEach(function (mempool_tx, i) {
-        if (!~mempool_tx_index && mempool_tx.txid === txhash) {
-          mempool_tx_index = i
-        }
-      })
-      if (~mempool_tx_index) {
-        self.mempool_txs.splice(mempool_tx_index, 1)
-      }
-    }
-    command_arr.push({method: 'getrawtransaction', params: [txhash, 1]})
-  })
+  if (self.mempool_txs) {
+    _.pullAllWith(self.mempool_txs, raw_block_data.tx, function (tx, txid) {
+      return tx.txid === txid
+    })
+  }
+  var command_arr = raw_block_data.tx.map(function (txid) { return {method: 'getrawtransaction', params: [txid, 1]} })
 
   var index_in_block = 0
   bitcoin_rpc.cmd(command_arr, function (raw_transaction_data, cb) {
@@ -1459,13 +1449,6 @@ Scanner.prototype.revert_txids = function (callback) {
       async.map(txids, function (txid, cb) {
         bitcoin_rpc.cmd('getrawtransaction', [txid], function (err, raw_transaction_data) {
           if (err || !raw_transaction_data || !raw_transaction_data.confirmations) {
-            if (err) {
-              console.log('txid ' + txid + ' received err = ', err)
-            } else if (!raw_transaction_data) {
-              console.log('txid ' + txid + ' !raw_transaction_data')
-            } else {
-              console.log('txid ' + txid + ' raw_transaction_data.confirmations = ' + raw_transaction_data.confirmations)
-            }
             regular_txids.push(txid)
             self.revert_tx(txid, sql_query, function (err, colored, revert_flags_txids) {
               if (err) return cb(err)
