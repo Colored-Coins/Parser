@@ -182,24 +182,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
       },
       function (err, revert_flags_txids) {
         if (err) return callback(err)
-        revert_flags_txids = [].concat.apply([], revert_flags_txids)
-        revert_flags_txids = _(revert_flags_txids).uniq().filter(function (txid) { return txid }).value()
-        console.log('revert flags txids:', revert_flags_txids)
-        if (revert_flags_txids.length) {
-          // put these 2 updates first. Otherwise delete queries will make it unrecoverable.
-          sql_query.unshift(squel.update()
-            .table('transactions')
-            .set('iosparsed', false)
-            .set('ccparsed', false)
-            .where('txid IN ?', revert_flags_txids)
-            .toString())
-          sql_query.unshift(squel.update()
-            .table('inputs')
-            .set('output_id', null)
-            .where('input_txid IN ?', revert_flags_txids)
-            .toString())
-        }
-        // logger.debug('executing bulks')
+        revert_transactions_flags(revert_flags_txids, sql_query)
         sql_query = sql_query.join(';\n')
         self.sequelize.query(sql_query)
           .then(function () {
@@ -210,7 +193,6 @@ Scanner.prototype.revert_block = function (block_height, callback) {
               self.emit('revertedcctransaction', {txid: txid})
             })
             self.fix_mempool(function (err) {
-              // logger.debug('deleting block')
               if (err) return callback(err)
               var delete_blocks_query = squel.delete()
                 .from('blocks')
@@ -228,6 +210,28 @@ Scanner.prototype.revert_block = function (block_height, callback) {
           }).catch(callback)
       })
     }).catch(callback)
+}
+
+var revert_transactions_flags = function (txids, sql_query) {
+  sql_query = sql_query || []
+  txids = [].concat.apply([], txids)
+  txids = _(txids).uniq().filter(function (txid) { return txid }).value()
+  console.log('revert flags txids:', txids)
+  if (!txids.length) {
+    return
+  }
+  // put these 2 updates first. Otherwise delete queries will make it unrecoverable.
+  sql_query.unshift(squel.update()
+    .table('transactions')
+    .set('iosparsed', false)
+    .set('ccparsed', false)
+    .where('txid IN ?', txids)
+    .toString())
+  sql_query.unshift(squel.update()
+    .table('inputs')
+    .set('output_id', null)
+    .where('input_txid IN ?', txids)
+    .toString())
 }
 
 Scanner.prototype.fix_mempool = function (callback) {
@@ -1474,23 +1478,7 @@ Scanner.prototype.revert_txids = function (callback) {
       },
       function (err, revert_flags_txids) {
         if (err) return callback(err)
-        revert_flags_txids = [].concat.apply([], revert_flags_txids)
-        revert_flags_txids = _(revert_flags_txids).uniq().filter(function (txid) { return txid }).value()
-        console.log('revert flags txids:', revert_flags_txids, 'sql_query.length = ', sql_query.length)
-        if (revert_flags_txids.length) {
-          // put these 2 updates first. Otherwise delete queries will make it unrecoverable.
-          sql_query.unshift(squel.update()
-            .table('transactions')
-            .set('iosparsed', false)
-            .set('ccparsed', false)
-            .where('txid IN ?', revert_flags_txids)
-            .toString())
-          sql_query.unshift(squel.update()
-            .table('inputs')
-            .set('output_id', null)
-            .where('input_txid IN ?', revert_flags_txids)
-            .toString())
-        }
+        revert_transactions_flags(revert_flags_txids, sql_query)
         sql_query = sql_query.join(';\n')
         self.sequelize.query(sql_query, {logging: console.log, benchmark: true})
           .then(function () {
