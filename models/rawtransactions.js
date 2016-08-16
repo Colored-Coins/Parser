@@ -4,6 +4,7 @@ module.exports = function (mongoose, properties) {
     coinbase: {type: String, index: true},
     txid: {type: String, index: true},
     vout: {type: Number, index: true},
+    doubleSpentTxid: {type: String, index: true},
     scriptSig: {
       asm: String,
       hex: String
@@ -88,6 +89,7 @@ module.exports = function (mongoose, properties) {
     ccdata: [ccdata],
     iosparsed: {type: Boolean, index: true, default: false},
     tries: {type: Number, index: true, default: 0},
+    doubleSpent: {type Boolean, index: true, default: false},
     colored: {type: Boolean, index: true, default: false},
     ccparsed: {type: Boolean, index: true, default: false},
     overflow: {type: Boolean, index: true, default: false}
