@@ -89,7 +89,7 @@ module.exports = function (mongoose, properties) {
     ccdata: [ccdata],
     iosparsed: {type: Boolean, index: true, default: false},
     tries: {type: Number, index: true, default: 0},
-    doubleSpent: {type Boolean, index: true, default: false},
+    doubleSpent: {type: Boolean, index: true, default: false},
     colored: {type: Boolean, index: true, default: false},
     ccparsed: {type: Boolean, index: true, default: false},
     overflow: {type: Boolean, index: true, default: false}
