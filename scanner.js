@@ -938,7 +938,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
   }
 
   var vins = {}
-  var utxos_input_indeces = {}
+  var utxos_input_indices = {}
   async.waterfall([
     function (cb) {
       if (!raw_transaction_data.colored) return cb(null, [])
@@ -1000,7 +1000,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
             })
             // logger.debug('inserting: '+vin.txid+':'+vin.vout)
             vins[vin.txid + ':' + vin.vout] = vin
-            utxos_input_indeces[vin.txid + ':' + vin.vout] = i
+            utxos_input_indices[vin.txid + ':' + vin.vout] = i
           }
         })
       }
@@ -1019,7 +1019,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
   function (err) {
     if (err) return callback(err)
     add_insert_update_to_bulk(raw_transaction_data, vins, utxos)
-    add_remove_to_bulk(utxos_input_indeces, utxos, utxo_bulk, block_height, raw_transaction_data)
+    add_remove_to_bulk(utxos_input_indices, utxos, utxo_bulk, block_height, raw_transaction_data)
     var all_fixed = (Object.keys(vins).length === 0)
     if (all_fixed) {
       calc_fee(raw_transaction_data)
@@ -1057,7 +1057,7 @@ var add_insert_update_to_bulk = function (raw_transaction_data, vins, utxos) {
   }
 }
 
-var add_remove_to_bulk = function (utxos_input_indeces, utxos, utxos_bulk, block_height, raw_transaction_data) {
+var add_remove_to_bulk = function (utxos_input_indices, utxos, utxos_bulk, block_height, raw_transaction_data) {
   var txid = raw_transaction_data.txid
   utxos.forEach(function (utxo) {
     var set_obj = {
@@ -1067,14 +1067,14 @@ var add_remove_to_bulk = function (utxos_input_indeces, utxos, utxos_bulk, block
     }
     if (utxo.used) {
       if (utxo.usedTxid !== txid) {
-        var utxo_input_index = utxos_input_indeces[utxo.txid + ':' + utxo.index]
+        var utxo_input_index = utxos_input_indices[utxo.txid + ':' + utxo.index]
         raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.usedTxid
         raw_transaction_data.doubleSpent = true
         set_obj.lastUsedTxid = utxo.usedTxid
       }
     } else {
       if (utxo.lastUsedTxid && utxo.lastUsedTxid !== txid) {
-        var utxo_input_index = utxos_input_indeces[utxo.txid + ':' + utxo.index]
+        var utxo_input_index = utxos_input_indices[utxo.txid + ':' + utxo.index]
         raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.lastUsedTxid
         raw_transaction_data.doubleSpent = true
       }

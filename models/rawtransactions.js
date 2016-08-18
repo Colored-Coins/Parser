@@ -4,7 +4,7 @@ module.exports = function (mongoose, properties) {
     coinbase: {type: String, index: true},
     txid: {type: String, index: true},
     vout: {type: Number, index: true},
-    doubleSpentTxid: {type: String, index: true},
+    doubleSpentTxid: {type: String},
     scriptSig: {
       asm: String,
       hex: String
@@ -27,6 +27,12 @@ module.exports = function (mongoose, properties) {
     fixed: {type: Boolean, index: true, default: false}
   }, {_id: false })
 
+  vin.index(
+    { doubleSpentTxid: 1 },
+    { partialFilterExpression: {
+      doubleSpentTxid: {$exists: true }}
+    }
+  )
   var vout = new mongoose.Schema({
     value: { type: Number, set: function (v) { return Math.round(v) } },
     n: Number,
