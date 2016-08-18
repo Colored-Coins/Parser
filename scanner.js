@@ -236,10 +236,10 @@ Scanner.prototype.revert_vin = function (tx, utxo_bulk, addresses_transactions_b
   conditions = {
     $or: conditions
   }
-  this.Utxo.find(conditions).lean().exec(function (err, useds) {
+  this.Utxo.find(conditions).lean().exec(function (err, used_txos) {
     if (err) return callback(err)
-    if (!useds || !useds.length) return callback()
-    useds.forEach(function (used) {
+    if (!used_txos || !used_txos.length) return callback()
+    used_txos.forEach(function (used) {
       if (used.usedTxid === txid) {
         if (used.addresses) {
           used.addresses.forEach(function (address) {
@@ -268,7 +268,8 @@ Scanner.prototype.revert_vin = function (tx, utxo_bulk, addresses_transactions_b
           $set: {
             used: false,
             usedBlockheight: null,
-            usedTxid: null
+            usedTxid: null,
+            lastUsedTxid: txid
           }
         })
       }
@@ -425,8 +426,8 @@ Scanner.prototype.fix_blocks = function (err, callback) {
               vin: transaction_data.vin,
               tries: transaction_data.tries || 0,
               fee: transaction_data.fee,
-              totalsent: transaction_data.totalsent
-
+              totalsent: transaction_data.totalsent,
+              doubleSpent: transaction_data.doubleSpent
             }
           })
           close_raw_transactions_bulk.find({txid: transaction_data.txid}).updateOne({
@@ -937,6 +938,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
   }
 
   var vins = {}
+  var utxos_input_indices = {}
   async.waterfall([
     function (cb) {
       if (!raw_transaction_data.colored) return cb(null, [])
@@ -989,7 +991,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
           })
         })
       } else {
-        raw_transaction_data.vin.forEach(function (vin) {
+        raw_transaction_data.vin.forEach(function (vin, i) {
           // colored = true
           if (vin.txid && 'vout' in vin) {
             conditions.push({
@@ -998,6 +1000,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
             })
             // logger.debug('inserting: '+vin.txid+':'+vin.vout)
             vins[vin.txid + ':' + vin.vout] = vin
+            utxos_input_indices[vin.txid + ':' + vin.vout] = i
           }
         })
       }
@@ -1016,7 +1019,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
   function (err) {
     if (err) return callback(err)
     add_insert_update_to_bulk(raw_transaction_data, vins, utxos)
-    add_remove_to_bulk(utxos, utxo_bulk, block_height, raw_transaction_data.txid)
+    add_remove_to_bulk(utxos_input_indices, utxos, utxo_bulk, block_height, raw_transaction_data)
     var all_fixed = (Object.keys(vins).length === 0)
     if (all_fixed) {
       calc_fee(raw_transaction_data)
@@ -1054,14 +1057,30 @@ var add_insert_update_to_bulk = function (raw_transaction_data, vins, utxos) {
   }
 }
 
-var add_remove_to_bulk = function (utxos, utxos_bulk, block_height, txid) {
+var add_remove_to_bulk = function (utxos_input_indices, utxos, utxos_bulk, block_height, raw_transaction_data) {
+  var txid = raw_transaction_data.txid
   utxos.forEach(function (utxo) {
-    utxos_bulk.find({ _id: utxo._id}).updateOne({
-      $set: {
-        used: true,
-        usedBlockheight: block_height,
-        usedTxid: txid
+    var set_obj = {
+      used: true,
+      usedBlockheight: block_height,
+      usedTxid: txid
+    }
+    if (utxo.used) {
+      if (utxo.usedTxid !== txid) {
+        var utxo_input_index = utxos_input_indices[utxo.txid + ':' + utxo.index]
+        raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.usedTxid
+        raw_transaction_data.doubleSpent = true
+        set_obj.lastUsedTxid = utxo.usedTxid
       }
+    } else {
+      if (utxo.lastUsedTxid && utxo.lastUsedTxid !== txid) {
+        var utxo_input_index = utxos_input_indices[utxo.txid + ':' + utxo.index]
+        raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.lastUsedTxid
+        raw_transaction_data.doubleSpent = true
+      }
+    }
+    utxos_bulk.find({ _id: utxo._id}).updateOne({
+      $set: set_obj
     })
   })
 }

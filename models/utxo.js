@@ -23,6 +23,7 @@ module.exports = function (mongoose) {
     blockheight: {type: Number, index: true},
     usedBlockheight: {type: Number, index: true},
     usedTxid: String,
+    lastUsedTxid: String,
     blocktime: Date
   })
 
