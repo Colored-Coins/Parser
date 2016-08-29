@@ -32,6 +32,7 @@ function Scanner (settings, db) {
   self.AssetsTransactions = db.model('assetstransactions', require(__dirname + '/models/assetstransactions')(db))
   self.AssetsUtxos = db.model('assetsutxos', require(__dirname + '/models/assetsutxos')(db))
   self.AssetsAddresses = db.model('assetsaddresses', require(__dirname + '/models/assetsaddresses')(db))
+  self.AddressesBalances = db.model('addressesbalances', require(__dirname + '/models/addressesbalances')(db))
 
   if (process.env.ROLE !== properties.roles.API) {
     self.on('newblock', function (newblock) {
@@ -833,8 +834,9 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
   var raw_transaction_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
   raw_transaction_bulk.bulk_name = 'raw_transaction_bulk'
   // var addresses_assets = {}
-
+  // console.log('command_arr', command_arr)
   bitcoin_rpc.cmd(command_arr, function (raw_transaction_data, cb) {
+    // console.log('raw_transaction_data.txid', raw_transaction_data.txid)
     raw_transaction_data = to_discrete(raw_transaction_data)
     var out = self.parse_new_transaction(raw_transaction_data, raw_block_data.height, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk)
     if (out) {
@@ -851,7 +853,7 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
       if ('code' in err && err.code === -5) {
         console.error('Can\'t find tx.')
       } else {
-        console.error('parse_new_block_err: ' + err)
+        console.error('parse_new_block_err: ', err)
         // console.error(command_arr)
         return callback(err)
       }
