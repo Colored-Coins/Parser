@@ -17,7 +17,7 @@ module.exports = function (sequelize, DataTypes) {
       primaryKey: true
     },
     amount: {
-      type: DataTypes.BIGINT,
+      type: DataTypes.DOUBLE,
       allowNull: false
     },
     issueTxid: {
