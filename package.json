@@ -23,8 +23,8 @@
     "async": "^1.4.2",
     "bitcoin-async": "^1.0.0",
     "cc-assetid-encoder": "^0.6.0",
-    "cc-get-assets-outputs": "^1.0.0",
-    "cc-transaction": "^1.0.0",
+    "cc-get-assets-outputs": "^1.2.0",
+    "cc-transaction": "^1.2.0",
     "lodash": "^3.10.1",
     "mongoose": "~4.4.3"
   }
