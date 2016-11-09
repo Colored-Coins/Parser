@@ -1204,7 +1204,9 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
     blocktime: raw_transaction_data.blocktime,
     blockheight: raw_transaction_data.blockheight,
     blockhash: raw_transaction_data.blockhash,
-    time: raw_transaction_data.time
+    time: raw_transaction_data.time,
+    colored: raw_transaction_data.colored,
+    ccdata: raw_transaction_data.ccdata
   }
   delete raw_transaction_data.blocktime
   delete raw_transaction_data.blockheight
