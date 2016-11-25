@@ -1204,9 +1204,7 @@ Scanner.prototype.parse_new_transaction = function (raw_transaction_data, block_
     blocktime: raw_transaction_data.blocktime,
     blockheight: raw_transaction_data.blockheight,
     blockhash: raw_transaction_data.blockhash,
-    time: raw_transaction_data.time,
-    colored: raw_transaction_data.colored,
-    ccdata: raw_transaction_data.ccdata
+    time: raw_transaction_data.time
   }
   delete raw_transaction_data.blocktime
   delete raw_transaction_data.blockheight
@@ -1591,7 +1589,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           },
         cb)
       } else {
-        console.log('getting mempool from memory cache')
+        console.log('getting mempool from memory cache (' + self.mempool_txs.length + ')')
         self.mempool_txs.forEach(function (transaction) {
           if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
             db_parsed_txids.push(transaction.txid)
@@ -1617,7 +1615,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       db_parsed_txids = _.xor(txids_intersection, db_parsed_txids) // the rest of the txids in the db (not yet found in mempool)
       txids_intersection = _.intersection(db_unparsed_txids, whole_txids) // txids that in mempool and db but not fully parsed
       db_unparsed_txids = _.xor(txids_intersection, db_unparsed_txids) // the rest of the txids in the db (not yet found in mempool, not fully parsed)
-      console.log('end xoring')
+      console.log('end xoring. db_parsed_txids.length = ', db_parsed_txids.length + ', db_unparsed_txids.length = ', db_unparsed_txids.length)
       new_txids.push('PH')
       console.log('parsing new mempool txs (' + (new_txids.length - 1) + ')')
       cargo_size = new_txids.length
