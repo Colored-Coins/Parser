@@ -1481,7 +1481,7 @@ Scanner.prototype.revert_txids = function (callback) {
       } else {
         skip += limit
       }
-      console.log('reverting txs (' + skip + ' - ' + Math.min(skip + limit, self.to_revert.length) + ') out of ' self.to_revert.length)
+      console.log('reverting txs (' + skip + ' - ' + Math.min(skip + limit, self.to_revert.length) + ') out of ' + self.to_revert.length)
 
       // logger.debug('reverting '+block_data.tx.length+' txs.')
       var regular_txids = []
