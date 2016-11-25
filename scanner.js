@@ -1070,14 +1070,14 @@ var add_remove_to_bulk = function (utxos_input_indices, utxos, utxos_bulk, block
     if (utxo.used) {
       if (utxo.usedTxid !== txid) {
         var utxo_input_index = utxos_input_indices[utxo.txid + ':' + utxo.index]
-        raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.usedTxid
+        raw_transaction_data.vin[utxo_input_index] && (raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.usedTxid)
         raw_transaction_data.doubleSpent = true
         set_obj.lastUsedTxid = utxo.usedTxid
       }
     } else {
       if (utxo.lastUsedTxid && utxo.lastUsedTxid !== txid) {
         var utxo_input_index = utxos_input_indices[utxo.txid + ':' + utxo.index]
-        raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.lastUsedTxid
+        raw_transaction_data.vin[utxo_input_index] && (raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.lastUsedTxid)
         raw_transaction_data.doubleSpent = true
       }
     }
@@ -1633,6 +1633,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       self.mempool_cargo.push(new_txids, function () {
         if (!--cargo_size) {
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
+          console.log('adding to to_revert ' + db_txids.length + ' db_txids')
           self.to_revert = self.to_revert.concat(db_txids)
           db_txids.forEach(function (txid) {
             if (self.mempool_txs) {
