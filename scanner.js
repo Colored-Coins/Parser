@@ -1621,7 +1621,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       db_parsed_txids = _.xor(txids_intersection, db_parsed_txids) // the rest of the txids in the db (not yet found in mempool)
       txids_intersection = _.intersection(db_unparsed_txids, whole_txids) // txids that in mempool and db but not fully parsed
       db_unparsed_txids = _.xor(txids_intersection, db_unparsed_txids) // the rest of the txids in the db (not yet found in mempool, not fully parsed)
-      console.log('end xoring. db_parsed_txids.length = ', db_parsed_txids.length + ', db_unparsed_txids.length = ', db_unparsed_txids.length)
+      console.log('end xoring')
       new_txids.push('PH')
       console.log('parsing new mempool txs (' + (new_txids.length - 1) + ')')
       cargo_size = new_txids.length
@@ -1637,21 +1637,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       self.mempool_cargo.push(new_txids, function () {
         if (!--cargo_size) {
           var db_txids = db_parsed_txids.concat(db_unparsed_txids)
-          console.log('adding to to_revert ' + db_txids.length + ' db_txids')
           self.to_revert = self.to_revert.concat(db_txids)
-          // db_txids.forEach(function (txid) {
-          //   if (self.mempool_txs) {
-          //     var mempool_tx_index = -1
-          //     self.mempool_txs.forEach(function (mempool_tx, i) {
-          //       if (!~mempool_tx_index && mempool_tx.txid === txid) {
-          //         mempool_tx_index = i
-          //       }
-          //     })
-          //     if (~mempool_tx_index) {
-          //       self.mempool_txs.splice(mempool_tx_index, 1)
-          //     }
-          //   }
-          // })
           end_func()
         }
       })
