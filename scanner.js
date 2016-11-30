@@ -1070,14 +1070,14 @@ var add_remove_to_bulk = function (utxos_input_indices, utxos, utxos_bulk, block
     if (utxo.used) {
       if (utxo.usedTxid !== txid) {
         var utxo_input_index = utxos_input_indices[utxo.txid + ':' + utxo.index]
-        raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.usedTxid
+        raw_transaction_data.vin[utxo_input_index] && (raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.usedTxid)
         raw_transaction_data.doubleSpent = true
         set_obj.lastUsedTxid = utxo.usedTxid
       }
     } else {
       if (utxo.lastUsedTxid && utxo.lastUsedTxid !== txid) {
         var utxo_input_index = utxos_input_indices[utxo.txid + ':' + utxo.index]
-        raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.lastUsedTxid
+        raw_transaction_data.vin[utxo_input_index] && (raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.lastUsedTxid)
         raw_transaction_data.doubleSpent = true
       }
     }
@@ -1457,9 +1457,11 @@ Scanner.prototype.revert_txids = function (callback) {
   self.to_revert = _.uniq(self.to_revert)
   if (!self.to_revert.length) return callback()
   console.log('need to revert ' + self.to_revert.length + ' txs from mempool.')
-  var n_batch = 100
-  // async.whilst(function () { return self.to_revert.length },
-    // function (cb) {
+  var more = true
+  var limit = 100
+  var skip = 0
+  async.whilst(function () { return more },
+    function (cb) {
       var utxo_bulk = self.Utxo.collection.initializeUnorderedBulkOp()
       utxo_bulk.bulk_name = 'utxo_bulk'
       var raw_transaction_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
@@ -1473,8 +1475,13 @@ Scanner.prototype.revert_txids = function (callback) {
       var assets_transactions_bulk = self.AssetsTransactions.collection.initializeUnorderedBulkOp()
       assets_transactions_bulk.bulk_name = 'assets_transactions_bulk'
 
-      var txids = self.to_revert.slice(0, n_batch)
-      console.log('reverting txs (' + txids.length + ',' + self.to_revert.length + ')')
+      var txids = self.to_revert.slice(skip, Math.min(skip + limit, self.to_revert.length))
+      if (skip + limit >= self.to_revert.length) {
+        more = false
+      } else {
+        skip += limit
+      }
+      console.log('reverting txs (' + skip + ' - ' + Math.min(skip + limit, self.to_revert.length) + ') out of ' + self.to_revert.length)
 
       // logger.debug('reverting '+block_data.tx.length+' txs.')
       var regular_txids = []
@@ -1521,13 +1528,12 @@ Scanner.prototype.revert_txids = function (callback) {
           colored_txids.forEach(function (txid) {
             self.emit('revertedcctransaction', {txid: txid})
           })
-          self.to_revert = []
-          callback()
+          cb()
         })
       })
-  //   },
-  //   callback
-  // )
+    },
+    callback
+  )
 }
 
 Scanner.prototype.parse_new_mempool = function (callback) {
