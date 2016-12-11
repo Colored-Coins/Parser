@@ -581,6 +581,24 @@ Scanner.prototype.parse_cc = function (err, callback) {
 Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk) {
   // logger.debug('parsing cc: '+transaction_data.txid)
   if (transaction_data.iosparsed && transaction_data.ccdata && transaction_data.ccdata.length) {
+    var type = null
+    if (transaction_data.ccdata && transaction_data.ccdata.length && transaction_data.ccdata[0].type) {
+      type = transaction_data.ccdata[0].type
+    }
+
+    // colored transaction may have assets only in its inputs (e.g. burn case)
+    transaction_data.vin.forEach(function (input) {
+      input.assets = input.assets || []
+      input.assets.forEach(function (asset) {
+        var txids_conditions = {
+          assetId: asset.assetId,
+          txid: transaction_data.txid,
+          type: type
+        }
+        assets_transactions_bulk.find(txids_conditions).upsert().updateOne(txids_conditions)
+      })
+    })
+
     var assets = get_assets_outputs(transaction_data)
     var index = 0
     assets.forEach(function (asset, out_index) {
@@ -596,10 +614,6 @@ Scanner.prototype.parse_cc_tx = function (transaction_data, utxo_bulk, assets_tr
           assets: asset
         }})
         asset.forEach(function (one_asset) {
-          var type = null
-          if (transaction_data.ccdata && transaction_data.ccdata.length && transaction_data.ccdata[0].type) {
-            type = transaction_data.ccdata[0].type
-          }
           var txids_conditions = {
             assetId: one_asset.assetId,
             txid: transaction_data.txid,
