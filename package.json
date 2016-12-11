@@ -8,6 +8,10 @@
     "coverage": "istanbul cover _mocha -- -R spec",
     "coveralls": "cat ./coverage/lcov.info | coveralls"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Colored-Coins/Parser.git"
+  },
   "contributors": [
     {
       "name": "Eliran Zach",
