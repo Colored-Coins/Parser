@@ -1430,7 +1430,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
         return callback(err)
       }
     }
-    logger.info('parsing mempool bulks')
+    logger.debug('parsing mempool bulks')
     execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_utxos_bulk, assets_transactions_bulk, assets_addresses_bulk, raw_transaction_bulk], function (err) {
       if (err) return handleError(err)
       execute_bulks([close_raw_transactions_bulk], function (err) {
