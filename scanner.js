@@ -198,7 +198,7 @@ Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_
   var conditions = {
     txid: txid
   }
-  console.log('reverting tx ' + txid)
+  logger.debug('reverting tx ' + txid)
   self.RawTransactions.findOne(conditions).lean().exec(function (err, tx) {
     if (err) return callback(err)
     if (!tx) return callback()
