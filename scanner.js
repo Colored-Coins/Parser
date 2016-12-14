@@ -160,7 +160,7 @@ Scanner.prototype.revert_block = function (block_height, callback) {
       if (err) return callback(err)
       revert_flags_txids = [].concat.apply([], revert_flags_txids)
       revert_flags_txids = _.uniq(revert_flags_txids)
-      console.log('revert flags txids:', revert_flags_txids)
+      logger.debug('revert flags txids:', revert_flags_txids)
       raw_transaction_bulk.find({txid: {$in: revert_flags_txids }}).update({$set: {iosparsed: false, ccparsed: false}})
       // logger.debug('executing bulks')
       execute_bulks([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
@@ -198,7 +198,7 @@ Scanner.prototype.revert_tx = function (txid, utxo_bulk, addresses_transactions_
   var conditions = {
     txid: txid
   }
-  console.log('reverting tx ' + txid)
+  logger.debug('reverting tx ' + txid)
   self.RawTransactions.findOne(conditions).lean().exec(function (err, tx) {
     if (err) return callback(err)
     if (!tx) return callback()
@@ -1386,7 +1386,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   if (ph_index !== -1) {
     txids.splice(ph_index, 1)
   }
-  console.log('parsing mempool cargo (' + txids.length + ')')
+  logger.debug('parsing mempool cargo (' + txids.length + ')')
 
   txids.forEach(function (txhash) {
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
@@ -1430,7 +1430,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
         return callback(err)
       }
     }
-    console.log('parsing mempool bulks')
+    logger.debug('parsing mempool bulks')
     execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_utxos_bulk, assets_transactions_bulk, assets_addresses_bulk, raw_transaction_bulk], function (err) {
       if (err) return handleError(err)
       execute_bulks([close_raw_transactions_bulk], function (err) {
@@ -1495,7 +1495,7 @@ Scanner.prototype.revert_txids = function (callback) {
       } else {
         skip += limit
       }
-      console.log('reverting txs (' + skip + ' - ' + Math.min(skip + limit, self.to_revert.length) + ') out of ' + self.to_revert.length)
+      logger.debug('reverting txs (' + skip + ' - ' + Math.min(skip + limit, self.to_revert.length) + ') out of ' + self.to_revert.length)
 
       // logger.debug('reverting '+block_data.tx.length+' txs.')
       var regular_txids = []
@@ -1513,7 +1513,7 @@ Scanner.prototype.revert_txids = function (callback) {
               cb(null, revert_flags_txids)
             })
           } else {
-            console.log('found tx that do not need to revert', txid)
+            logger.debug('found tx that do not need to revert', txid)
             if (~self.to_revert.indexOf(txid)) {
               self.to_revert.splice(self.to_revert.indexOf(txid), 1)
             }
@@ -1531,7 +1531,7 @@ Scanner.prototype.revert_txids = function (callback) {
         if (err) return cb(err)
         revert_flags_txids = [].concat.apply([], revert_flags_txids)
         revert_flags_txids = _.uniq(revert_flags_txids)
-        console.log('revert flags txids:', revert_flags_txids)
+        logger.debug('revert flags txids:', revert_flags_txids)
         raw_transaction_bulk.find({txid: {$in: revert_flags_txids }}).update({$set: {iosparsed: false, ccparsed: false}})
         // logger.debug('executing bulks')
         execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
@@ -1559,13 +1559,13 @@ Scanner.prototype.parse_new_mempool = function (callback) {
   var cargo_size
 
   if (properties.scanner.mempool !== 'true') return callback()
-  console.log('start reverting (if needed)')
+  logger.debug('start reverting (if needed)')
   async.waterfall([
     function (cb) {
       self.revert_txids(cb)
     },
     function (cb) {
-      console.log('end reverting (if needed)')
+      logger.debug('end reverting (if needed)')
       if (!self.mempool_txs) {
         self.emit('mempool')
         var conditions = {
@@ -1584,11 +1584,13 @@ Scanner.prototype.parse_new_mempool = function (callback) {
         self.mempool_txs = []
         async.whilst(function () { return has_next },
           function (cb) {
-            console.time('find mempool db txs')
+            if (debug) console.time('find mempool db txs')
             self.RawTransactions.find(conditions, projection, {limit: limit, skip: skip}).lean().exec(function (err, transactions) {
-              console.timeEnd('find mempool db txs')
               if (err) return cb(err)
-              console.time('processing mempool db txs')
+              if (debug) {
+                console.timeEnd('find mempool db txs')
+                console.time('processing mempool db txs')
+              }
               self.mempool_txs = self.mempool_txs.concat(transactions)
               transactions.forEach(function (transaction) {
                 if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
@@ -1597,9 +1599,9 @@ Scanner.prototype.parse_new_mempool = function (callback) {
                   db_unparsed_txids.push(transaction.txid)
                 }
               })
-              console.timeEnd('processing mempool db txs')
+              if (debug) console.timeEnd('processing mempool db txs')
               if (transactions.length === limit) {
-                console.log('getting txs', skip + 1, '-', skip + limit)
+                logger.debug('getting txs', skip + 1, '-', skip + limit)
                 skip += limit
               } else {
                 has_next = false
@@ -1609,7 +1611,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
           },
         cb)
       } else {
-        console.log('getting mempool from memory cache')
+        logger.debug('getting mempool from memory cache')
         self.mempool_txs.forEach(function (transaction) {
           if (transaction.iosparsed && transaction.colored === transaction.ccparsed) {
             db_parsed_txids.push(transaction.txid)
@@ -1622,20 +1624,20 @@ Scanner.prototype.parse_new_mempool = function (callback) {
 
     },
     function (cb) {
-      console.log('start find mempool bitcoind txs')
+      logger.debug('start find mempool bitcoind txs')
       bitcoin_rpc.cmd('getrawmempool', [], cb)
     },
     function (whole_txids, cb) {
       whole_txids = whole_txids || []
-      console.log('end find mempool bitcoind txs')
-      console.log('parsing mempool txs (' + whole_txids.length + ')')
-      console.log('start xoring')
+      logger.debug('end find mempool bitcoind txs')
+      logger.debug('parsing mempool txs (' + whole_txids.length + ')')
+      logger.debug('start xoring')
       var txids_intersection = _.intersection(db_parsed_txids, whole_txids) // txids that allready parsed in db
       new_txids = _.xor(txids_intersection, whole_txids) // txids that not parsed in db
       db_parsed_txids = _.xor(txids_intersection, db_parsed_txids) // the rest of the txids in the db (not yet found in mempool)
       txids_intersection = _.intersection(db_unparsed_txids, whole_txids) // txids that in mempool and db but not fully parsed
       db_unparsed_txids = _.xor(txids_intersection, db_unparsed_txids) // the rest of the txids in the db (not yet found in mempool, not fully parsed)
-      console.log('end xoring')
+      logger.debug('end xoring')
       new_txids.push('PH')
       console.log('parsing new mempool txs (' + (new_txids.length - 1) + ')')
       cargo_size = new_txids.length
@@ -1643,7 +1645,7 @@ Scanner.prototype.parse_new_mempool = function (callback) {
       var end_func = function () {
         if (!ended++) {
           self.removeListener('kill', end_func)
-          console.log('mempool cargo ended.')
+          logger.debug('mempool cargo ended.')
           cb()
         }
       }
@@ -1708,13 +1710,13 @@ Scanner.prototype.priority_parse = function (txid, callback) {
   var self = this
   var PARSED = 'PARSED'
   var transaction
-  console.log('start priority_parse: '+ txid)
-  console.time('priority_parse: '+ txid)
+  logger.debug('start priority_parse: '+ txid)
+  if (debug) console.time('priority_parse: '+ txid)
   var end = function (err) {
     if (~self.priority_parse_list.indexOf(txid)) {
       self.priority_parse_list.splice(self.priority_parse_list.indexOf(txid), 1)
     }
-    console.timeEnd('priority_parse: '+ txid)
+    if (debug) console.timeEnd('priority_parse: '+ txid)
     callback(err)
   }
   async.waterfall([
@@ -1725,7 +1727,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
           cb(PARSED)
         })
       }
-      console.time('priority_parse: find in db '+ txid)
+      if (debug) console.time('priority_parse: find in db '+ txid)
       self.priority_parse_list.push(txid)
       var conditions = {
         txid: txid,
@@ -1738,17 +1740,17 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       self.RawTransactions.findOne(conditions, projection).lean().exec(cb)
     },
     function (tx, cb) {
-      console.timeEnd('priority_parse: find in db '+ txid)
+      if (debug) console.timeEnd('priority_parse: find in db '+ txid)
       if (tx) return cb(PARSED)
-      console.time('priority_parse: get_from_bitcoind '+ txid)
+      if (debug) console.time('priority_parse: get_from_bitcoind '+ txid)
       bitcoin_rpc.cmd('getrawtransaction', [txid, 1], function (err, raw_transaction_data) {
         if (err && err.code === -5) return cb(['tx ' + txid + ' not found.', 204])
         cb(err, raw_transaction_data)
       })
     },
     function (raw_transaction_data, cb) {
-      console.timeEnd('priority_parse: get_from_bitcoind '+ txid)
-      console.time('priority_parse: parse inputs '+ txid)
+      if (debug) console.timeEnd('priority_parse: get_from_bitcoind '+ txid)
+      if (debug) console.time('priority_parse: parse inputs '+ txid)
       transaction = raw_transaction_data
       transaction = to_discrete(transaction)
       if (!transaction || !transaction.vin) return cb(['tx ' + txid + ' not found.', 204])
@@ -1758,8 +1760,10 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       cb)
     },
     function (cb) {
-      console.timeEnd('priority_parse: parse inputs '+ txid)
-      console.time('priority_parse: parse '+ txid)
+      if (debug) {
+        console.timeEnd('priority_parse: parse inputs '+ txid)
+        console.time('priority_parse: parse '+ txid)
+      }
       self.mempool_cargo.unshift(txid, cb)
     }
   ],
@@ -1770,7 +1774,7 @@ Scanner.prototype.priority_parse = function (txid, callback) {
       }
       end(err)
     }
-    console.timeEnd('priority_parse: parse '+ txid)
+    if (debug) console.timeEnd('priority_parse: parse '+ txid)
     end()
   })
 }
