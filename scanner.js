@@ -1412,7 +1412,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     raw_transaction_data = to_discrete(raw_transaction_data)
     self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, close_raw_transactions_bulk, emits, function (err, did_work, iosparsed, ccparsed) {
       if (err) return cb(err)
-      logger.debug('parse_new_mempool_transaction result: txid = ' + raw_transaction_data.txid + ', iosparsed =' + iosparsed + ', ccparsed === colored' + (ccparsed === raw_transaction_data.colored) + ', did_work = ' + did_work)
+      logger.debug('parse_new_mempool_transaction result: txid = ' + raw_transaction_data.txid + ', iosparsed =' + iosparsed + ', ccparsed = ' + ccparsed + ', raw_transaction_data.colored = ' + raw_transaction_data.colored + ', did_work = ' + did_work)
       if (did_work) {
         new_mempool_txs.push({
           txid: raw_transaction_data.txid,
