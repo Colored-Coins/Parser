@@ -1270,9 +1270,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     function (l_transaction_data, cb) {
       transaction_data = l_transaction_data
       if (transaction_data) {
-        logger.debug('pre : raw_transaction_data.colored = ', raw_transaction_data.colored)
         _.assign(raw_transaction_data, transaction_data)
-        logger.debug('post: raw_transaction_data.colored = ', raw_transaction_data.colored)
         blockheight = raw_transaction_data.blockheight || -1
         cb(null, blockheight)
       } else {
@@ -1337,8 +1335,8 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
           iosparsed = raw_transaction_data.iosparsed
           ccparsed = raw_transaction_data.ccparsed
           //to be updated with close_raw_transactions_bulk
-          raw_transaction_data.iosparsed = false 
-          raw_transaction_data.ccparsed = false
+          raw_transaction_data.iosparsed = false  
+          raw_transaction_data.ccparsed = false 
           raw_transaction_bulk.find(conditions).upsert().updateOne(raw_transaction_data)
           if (iosparsed || ccparsed) {
             close_raw_transactions_bulk.find(conditions).updateOne({
@@ -1389,8 +1387,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   if (ph_index !== -1) {
     txids.splice(ph_index, 1)
   }
-  logger.debug('parsing mempool cargo (' + txids.length + ')')
-  logger.debug('parsing mempool cargo, txid:', txids)
+  logger.debug('parsing mempool cargo (' + txids.length + '). txids =', txids)
 
   txids.forEach(function (txhash) {
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
