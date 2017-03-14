@@ -1274,7 +1274,7 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
         blockheight = raw_transaction_data.blockheight || -1
         cb(null, blockheight)
       } else {
-        // logger.debug('parsing new tx: '+raw_transaction_data.txid)
+        logger.debug('parsing new mempool tx: ' + raw_transaction_data.txid)
         did_work = true
         if (blockheight === -1 && raw_transaction_data.blockhash) {
           get_block_height(raw_transaction_data.blockhash, cb)
@@ -1388,6 +1388,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     txids.splice(ph_index, 1)
   }
   logger.debug('parsing mempool cargo (' + txids.length + ')')
+  logger.debug('parsing mempool cargo, txid:', txids)
 
   txids.forEach(function (txhash) {
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
