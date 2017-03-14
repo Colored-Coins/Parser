@@ -820,8 +820,9 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
   var command_arr = []
 
   raw_block_data.tx.forEach(function (txhash) {
-    if (~self.to_revert.indexOf(txhash)) {
-      self.to_revert = []
+    var to_revert_tx_index = self.to_revert.indexOf(txhash)
+    if (to_revert_tx_index !== -1) {
+      self.to_revert.splice(to_revert_tx_index, 1)
     }
     if (self.mempool_txs) {
       var mempool_tx_index = -1
@@ -1537,6 +1538,11 @@ Scanner.prototype.revert_txids = function (callback) {
         execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
           if (err) return cb(err)
           regular_txids.forEach(function (txid) {
+            var to_revert_tx_index = self.to_revert.indexOf(txid)
+            if (to_revert_tx_index !== -1) {
+              self.to_revert.splice(to_revert_tx_index, 1)
+            }
+            logger.debug('reverted tx ' + txid)
             self.emit('revertedtransaction', {txid: txid})
           })
           colored_txids.forEach(function (txid) {
