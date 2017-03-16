@@ -820,8 +820,9 @@ Scanner.prototype.parse_new_block = function (raw_block_data, callback) {
   var command_arr = []
 
   raw_block_data.tx.forEach(function (txhash) {
-    if (~self.to_revert.indexOf(txhash)) {
-      self.to_revert = []
+    var to_revert_tx_index = self.to_revert.indexOf(txhash)
+    if (to_revert_tx_index !== -1) {
+      self.to_revert.splice(to_revert_tx_index, 1)
     }
     if (self.mempool_txs) {
       var mempool_tx_index = -1
@@ -1269,11 +1270,11 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
     function (l_transaction_data, cb) {
       transaction_data = l_transaction_data
       if (transaction_data) {
-        raw_transaction_data = transaction_data
+        _.assign(raw_transaction_data, transaction_data)
         blockheight = raw_transaction_data.blockheight || -1
         cb(null, blockheight)
       } else {
-        // logger.debug('parsing new tx: '+raw_transaction_data.txid)
+        logger.debug('parsing new mempool tx: ' + raw_transaction_data.txid)
         did_work = true
         if (blockheight === -1 && raw_transaction_data.blockhash) {
           get_block_height(raw_transaction_data.blockhash, cb)
@@ -1386,7 +1387,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   if (ph_index !== -1) {
     txids.splice(ph_index, 1)
   }
-  logger.debug('parsing mempool cargo (' + txids.length + ')')
+  logger.debug('parsing mempool cargo (' + txids.length + '). txids =', txids)
 
   txids.forEach(function (txhash) {
     command_arr.push({ method: 'getrawtransaction', params: [txhash, 1]})
@@ -1410,6 +1411,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     raw_transaction_data = to_discrete(raw_transaction_data)
     self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, close_raw_transactions_bulk, emits, function (err, did_work, iosparsed, ccparsed) {
       if (err) return cb(err)
+      logger.debug('parse_new_mempool_transaction result: txid = ' + raw_transaction_data.txid + ', iosparsed =' + iosparsed + ', ccparsed = ' + ccparsed + ', raw_transaction_data.colored = ' + raw_transaction_data.colored + ', did_work = ' + did_work)
       if (did_work) {
         new_mempool_txs.push({
           txid: raw_transaction_data.txid,
@@ -1537,6 +1539,11 @@ Scanner.prototype.revert_txids = function (callback) {
         execute_bulks_parallel([utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, raw_transaction_bulk], function (err) {
           if (err) return cb(err)
           regular_txids.forEach(function (txid) {
+            var to_revert_tx_index = self.to_revert.indexOf(txid)
+            if (to_revert_tx_index !== -1) {
+              self.to_revert.splice(to_revert_tx_index, 1)
+            }
+            logger.debug('reverted tx ' + txid)
             self.emit('revertedtransaction', {txid: txid})
           })
           colored_txids.forEach(function (txid) {
