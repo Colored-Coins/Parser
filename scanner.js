@@ -1833,15 +1833,24 @@ var execute_bulks_parallel = function (bulks, callback) {
 Scanner.prototype.transmit = function (txHex, callback) {
   var self = this
   if (typeof txHex !== 'string') {
-    txHex = txHex.toHex()
+    txHex = txHex.toString()
   }
-  bitcoin_rpc.cmd('sendrawtransaction', [txHex], function (err, txid) {
+  self._transmit(txHex, function (err, txid) {
     if (err) return callback(err)
     self.priority_parse(txid, function (err) {
       if (err) return callback(err)
       return callback(null, {txid: txid})
     })
   })
+}
+
+Scanner.prototype._transmit = function (txHex, callback) {
+  if (typeof txHex !== 'string') {
+    txHex = txHex.toString()
+  }
+  bitcoin_rpc.cmd('sendrawtransaction', [txHex], function (err, txid) {
+    callback(err, txid)
+  })  
 }
 
 module.exports = Scanner
