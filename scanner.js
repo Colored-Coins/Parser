@@ -1272,6 +1272,10 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       if (transaction_data) {
         _.assign(raw_transaction_data, transaction_data)
         blockheight = raw_transaction_data.blockheight || -1
+        if (self.mempool_txs && self.mempool_txs.indexOf(transaction_data.txid) !== -1 && blockheight === -1) {
+          // if found as unconfirmed transaction in DB - push to cache (possibly pushed to DB by different process)
+          self.mempool_txs.push(transaction_data.txid)
+        }
         cb(null, blockheight)
       } else {
         logger.debug('parsing new mempool tx: ' + raw_transaction_data.txid)
