@@ -1272,10 +1272,6 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
       if (transaction_data) {
         _.assign(raw_transaction_data, transaction_data)
         blockheight = raw_transaction_data.blockheight || -1
-        if (self.mempool_txs && self.mempool_txs.indexOf(transaction_data.txid) !== -1 && blockheight === -1) {
-          // if found as unconfirmed transaction in DB - push to cache (possibly pushed to DB by different process)
-          self.mempool_txs.push(transaction_data.txid)
-        }
         cb(null, blockheight)
       } else {
         logger.debug('parsing new mempool tx: ' + raw_transaction_data.txid)
@@ -1383,7 +1379,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
   assets_addresses_bulk.bulk_name = 'assets_addresses_bulk'
   var close_raw_transactions_bulk = self.RawTransactions.collection.initializeUnorderedBulkOp()
   close_raw_transactions_bulk.bulk_name = 'close_raw_transactions_bulk'
-  var new_mempool_txs = []
+  var tmp_mempool_txs = []
   var command_arr = []
   var emits = []
   txids = _.uniq(txids)
@@ -1415,9 +1411,10 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
     raw_transaction_data = to_discrete(raw_transaction_data)
     self.parse_new_mempool_transaction(raw_transaction_data, raw_transaction_bulk, utxo_bulk, addresses_transactions_bulk, addresses_utxos_bulk, assets_transactions_bulk, assets_utxos_bulk, assets_addresses_bulk, close_raw_transactions_bulk, emits, function (err, did_work, iosparsed, ccparsed) {
       if (err) return cb(err)
-      logger.debug('parse_new_mempool_transaction result: txid = ' + raw_transaction_data.txid + ', iosparsed =' + iosparsed + ', ccparsed = ' + ccparsed + ', raw_transaction_data.colored = ' + raw_transaction_data.colored + ', did_work = ' + did_work)
-      if (did_work) {
-        new_mempool_txs.push({
+      logger.debug('parse_new_mempool_transaction result: txid = ' + raw_transaction_data.txid + ', iosparsed =' + iosparsed + ', ccparsed = ' + ccparsed + ', raw_transaction_data.colored = ' + raw_transaction_data.colored + ', did_work = ' + did_work)     
+      if (raw_transaction_data.blockheight === -1) { // possibly was found in DB as confirmed
+        // Note: we add ALL cargo transactions regardless of 'did_work' value - it may have been done with a differenct process.
+        tmp_mempool_txs.push({
           txid: raw_transaction_data.txid,
           iosparsed: iosparsed,
           colored: raw_transaction_data.colored,
@@ -1442,25 +1439,16 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
       execute_bulks([close_raw_transactions_bulk], function (err) {
         if (err) return handleError(err)
         if (self.mempool_txs) {
-          new_mempool_txs.forEach(function (mempool_tx) {
-            var found = false
-            self.mempool_txs.forEach(function (self_mempool_tx) {
-              if (!found && mempool_tx.txid === self_mempool_tx.txid) {
-                found = true
-                self_mempool_tx.iosparsed = mempool_tx.iosparsed
-                self_mempool_tx.colored = mempool_tx.colored
-                self_mempool_tx.ccparsed = mempool_tx.ccparsed
-              }
-            })
-            if (!found) {
-              self.mempool_txs.push({
-                txid: mempool_tx.txid,
-                iosparsed: mempool_tx.iosparsed,
-                colored: mempool_tx.colored,
-                ccparsed: mempool_tx.ccparsed
-              })
+          if (debug) console.time('add or assign mempool transactions to cache')
+          tmp_mempool_txs.forEach(tmp_mempool_tx => {
+            var cache_mempool_tx = self.mempool_txs.find(mempool_tx => mempool_tx.txid === tmp_mempool_tx.txid)
+            if (cache_mempool_tx) {
+              _.assign(cache_mempool_tx, tmp_mempool_tx)
+            } else {
+              self.mempool_txs.push(tmp_mempool_tx)
             }
           })
+          if (debug) console.time('add or assign mempool transactions to cache')
         }
         emits.forEach(function (emit) {
           self.emit(emit[0], emit[1])
