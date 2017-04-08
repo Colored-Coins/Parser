@@ -1448,7 +1448,7 @@ Scanner.prototype.parse_mempool_cargo = function (txids, callback) {
               self.mempool_txs.push(tmp_mempool_tx)
             }
           })
-          if (debug) console.time('add or assign mempool transactions to cache')
+          if (debug) console.timeEnd('add or assign mempool transactions to cache')
         }
         emits.forEach(function (emit) {
           self.emit(emit[0], emit[1])
