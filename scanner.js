@@ -1254,8 +1254,8 @@ Scanner.prototype.parse_new_mempool_transaction = function (raw_transaction_data
   var self = this
   var transaction_data
   var did_work = false
-  var iosparsed
-  var ccparsed
+  var iosparsed = false
+  var ccparsed = false
   var blockheight = -1
   // var parsing_vin = false
   var emits = []
