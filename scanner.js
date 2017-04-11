@@ -987,6 +987,8 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
               txid: vin.txid,
               index: vin.vout
             })
+            vins[vin.txid + ':' + vin.vout] = vin
+            utxos_input_indices[vin.txid + ':' + vin.vout] = i
           }
         })
       }
