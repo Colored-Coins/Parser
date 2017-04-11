@@ -1053,6 +1053,7 @@ var add_remove_to_bulk = function (utxos_input_indices, utxos, utxos_bulk, block
     }
     if (utxo.used) {
       if (utxo.usedTxid !== txid) {
+        logger.debug('found double-spend: ' + txid + ' is a double-spend of ' + utxo.usedTxid)
         var utxo_input_index = utxos_input_indices[utxo.txid + ':' + utxo.index]
         raw_transaction_data.vin[utxo_input_index] && (raw_transaction_data.vin[utxo_input_index].doubleSpentTxid = utxo.usedTxid)
         raw_transaction_data.doubleSpent = true
