@@ -241,10 +241,12 @@ Scanner.prototype.revert_vin = function (tx, utxo_bulk, addresses_transactions_b
       usedTxid: txid
     }
     var output_update = {
-      used: false,
-      usedTxid: null,
-      usedBlockheight: null,
-      lastUsedTxid: txid
+      $set: {
+        used: false,
+        usedTxid: null,
+        usedBlockheight: null,
+        lastUsedTxid: txid
+      }
     }
     utxo_bulk.find(output_condition).updateOne(output_update)
   })
