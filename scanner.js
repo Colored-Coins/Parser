@@ -932,7 +932,7 @@ Scanner.prototype.parse_vin = function (raw_transaction_data, block_height, utxo
       if (!raw_transaction_data.colored) return cb(null, [])
 
       var conditions = []
-      raw_transaction_data.vin.forEach(function (vin) {
+      raw_transaction_data.vin.forEach(function (vin, i) {
         if (vin.coinbase) {
           coinbase = true
           vin.fixed = true
